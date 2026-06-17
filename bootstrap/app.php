@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'verify.whatsapp' => VerifyWhatsAppToken::class,
             'verify.midtrans' => VerifyMidtransSignature::class,
+            'sisir.auth'      => \App\Http\Middleware\SisirAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

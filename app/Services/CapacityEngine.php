@@ -85,8 +85,8 @@ class CapacityEngine
     {
         $redisKey = $this->redisLockKey($barberId, $scheduledAt);
 
-        // Atomic Redis SET NX EX — only succeeds if key doesn't exist
-        $acquired = Cache::store('redis')->add($redisKey, $bookingId, $this->lockTtl);
+        // Atomic SET NX EX equivalent — only succeeds if key doesn't exist
+        $acquired = Cache::add($redisKey, $bookingId, $this->lockTtl);
 
         if (! $acquired) {
             Log::warning('[CapacityEngine] Slot already Redis-locked', [
@@ -118,7 +118,7 @@ class CapacityEngine
     public function releaseSlot(int $bookingId, int $barberId, Carbon $scheduledAt): void
     {
         $redisKey = $this->redisLockKey($barberId, $scheduledAt);
-        Cache::store('redis')->forget($redisKey);
+        Cache::forget($redisKey);
 
         Booking::where('id', $bookingId)->update(['lock_expires_at' => null]);
 
@@ -174,7 +174,7 @@ class CapacityEngine
 
             // Also lock in Redis to block the online booking flow
             $redisKey = $this->redisLockKey($barberId, $scheduledAt);
-            Cache::store('redis')->put($redisKey, $booking->id, $this->lockTtl);
+            Cache::put($redisKey, $booking->id, $this->lockTtl);
 
             Log::info('[CapacityEngine] Walk-in registered', ['booking_id' => $booking->id]);
 
@@ -212,7 +212,7 @@ class CapacityEngine
 
     private function isRedisLocked(int $barberId, Carbon $scheduledAt): bool
     {
-        return Cache::store('redis')->has(
+        return Cache::has(
             $this->redisLockKey($barberId, $scheduledAt)
         );
     }

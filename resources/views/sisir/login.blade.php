@@ -161,6 +161,8 @@
   </a>
 </div>
 
+<form action="{{ route('sisir.login.post') }}" method="POST">
+@csrf
 <div class="login-body">
   <!-- Scissors icon circle -->
   <div class="login-icon-circle anim-fade-up">
@@ -176,39 +178,80 @@
   <h1 class="login-title anim-fade-up delay-1">Selamat Datang<br/>Kembali!</h1>
   <p class="login-subtitle anim-fade-up delay-1">Reclaim Your Time, Recover Your Revenue</p>
 
-  <!-- Phone input -->
+  {{-- Validation or session flash --}}
+  @if(session('info'))
+    <div class="anim-fade-up" style="
+      background: var(--green-100); color: var(--green-700);
+      border-radius: var(--radius-md); padding: 10px 16px;
+      font-size: 13px; font-weight: 600; width: 100%; margin-bottom: 12px;
+    ">{{ session('info') }}</div>
+  @endif
+
+  @if($errors->any())
+    <div class="anim-fade-up" style="
+      background: var(--red-100); color: var(--red-500);
+      border-radius: var(--radius-md); padding: 10px 16px;
+      font-size: 13px; font-weight: 600; width: 100%; margin-bottom: 12px;
+    ">{{ $errors->first('email') ?? $errors->first() }}</div>
+  @endif
+
+  {{-- Email input --}}
   <div class="form-group anim-fade-up delay-2">
-    <label class="form-label" for="phoneInput">Nomor Telepon</label>
-    <div class="phone-input-wrap">
-      <div class="phone-prefix">+62</div>
+    <label class="form-label" for="emailInput">Email</label>
+    <div class="phone-input-wrap" style="padding-left:14px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+        <path d="M4 7.00005L10.2 11.65C11.2667 12.45 12.7333 12.45 13.8 11.65L20 7" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="3" y="5" width="18" height="14" rx="2" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+      </svg>
       <input
         class="phone-input"
-        id="phoneInput"
-        type="tel"
-        placeholder="812-3456-7890"
-        autocomplete="tel"
-        inputmode="numeric"
+        id="emailInput"
+        name="email"
+        type="email"
+        placeholder="admin@sisir.barber"
+        autocomplete="email"
+        value="{{ old('email') }}"
+        required
       />
     </div>
   </div>
 
-  <!-- Lanjutkan button -->
-  <a href="{{ route('sisir.dashboard') }}" class="btn-primary anim-fade-up delay-3">
-    Lanjutkan
+  {{-- Password input --}}
+  <div class="form-group anim-fade-up delay-2">
+    <label class="form-label" for="passwordInput">Password</label>
+    <div class="phone-input-wrap" style="padding-left:14px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+        <rect x="5" y="11" width="14" height="10" rx="2" stroke="#9ca3af" stroke-width="2"/>
+        <path d="M8 11V7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7V11" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <input
+        class="phone-input"
+        id="passwordInput"
+        name="password"
+        type="password"
+        placeholder="Masukkan password"
+        required
+      />
+    </div>
+  </div>
+
+  {{-- Lanjutkan button — submits the form --}}
+  <button type="submit" class="btn-primary anim-fade-up delay-3" id="btnLanjutkan">
+    <span id="btnText">Lanjutkan</span>
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <path d="M3 9h12M10 4l5 5-5 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-  </a>
+  </button>
 
-  <!-- Divider -->
+  {{-- Divider --}}
   <div class="divider anim-fade-up delay-3">
     <div class="divider-line"></div>
     <span class="divider-text">Atau masuk dengan</span>
     <div class="divider-line"></div>
   </div>
 
-  <!-- Google -->
-  <button class="btn-google anim-fade-up delay-4" onclick="showToast('Login dengan Google segera hadir!')">
+  {{-- Google --}}
+  <button type="button" class="btn-google anim-fade-up delay-4" onclick="showToast('Login dengan Google segera hadir!')">
     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
       <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
       <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
@@ -217,7 +260,8 @@
     </svg>
     Google
   </button>
-</div>
+</form>
+
 
 <!-- Footer -->
 <div class="login-footer anim-fade-up delay-4">

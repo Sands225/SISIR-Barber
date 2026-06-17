@@ -104,4 +104,51 @@ enum BookingStatus: string
             self::NO_SHOW,
         ], strict: true);
     }
+    /**
+     * CSS badge class for the mobile UI.
+     */
+    public function badgeClass(): string
+    {
+        return match ($this) {
+            self::TEMP_LOCKED         => 'badge-sudahdp',   // orange — waiting payment
+            self::BOOKED              => 'badge-sudahdp',   // orange — DP paid
+            self::CONFIRMED           => 'badge-sudahdp',   // orange — confirmed
+            self::IN_SERVICE          => 'badge-selesai',   // green  — in chair
+            self::COMPLETED           => 'badge-selesai',   // green  — done
+            self::CANCELLED_BY_SYSTEM => 'badge-batal',     // red    — cancelled
+            self::NO_SHOW             => 'badge-batal',     // red    — no-show
+        };
+    }
+
+    /**
+     * Short UI label for the mobile booking list badge.
+     */
+    public function shortLabel(): string
+    {
+        return match ($this) {
+            self::TEMP_LOCKED         => 'MENUNGGU DP',
+            self::BOOKED              => 'SUDAH DP',
+            self::CONFIRMED           => 'SUDAH DP',
+            self::IN_SERVICE          => 'DILAYANI',
+            self::COMPLETED           => 'SELESAI',
+            self::CANCELLED_BY_SYSTEM => 'BATAL',
+            self::NO_SHOW             => 'BATAL',
+        };
+    }
+
+    /**
+     * Filter tab key matching the booking list filter.
+     */
+    public function filterKey(): string
+    {
+        return match ($this) {
+            self::TEMP_LOCKED         => 'Menunggu',
+            self::BOOKED,
+            self::CONFIRMED           => 'Sudah DP',
+            self::IN_SERVICE,
+            self::COMPLETED           => 'Selesai',
+            self::CANCELLED_BY_SYSTEM,
+            self::NO_SHOW             => 'Batal',
+        };
+    }
 }

@@ -17,6 +17,13 @@ class MidtransService
         MidtransConfig::$isProduction = config('sisir.midtrans.is_production', false);
         MidtransConfig::$isSanitized  = true;
         MidtransConfig::$is3ds        = true;
+        
+        // Disable SSL Verification for local Windows development
+        MidtransConfig::$curlOptions = [
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_HTTPHEADER     => [],
+        ];
     }
 
     /**

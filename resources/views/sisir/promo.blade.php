@@ -123,7 +123,7 @@
     </svg>
     <span class="brand-name">SISIR</span>
   </a>
-  <div class="avatar-btn"><div class="avatar-fallback">A</div></div>
+  <div class="avatar-btn"><div class="avatar-fallback">{{ auth()->check() ? strtoupper(substr(auth()->user()->name, 0, 1)) : 'A' }}</div></div>
 </div>
 
 <!-- Scrollable content -->
@@ -194,6 +194,7 @@
       Kirim Promo Sekarang
     </button>
 
+    <!-- End of content -->
   </div>
 </div>
 
@@ -228,14 +229,17 @@
 
 @section('scripts')
 <script>
+  const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
   function updatePreview(val) {
     const el = document.getElementById('previewAmount');
     if (el) el.textContent = val || '0';
   }
 
   function sendPromo() {
-    const btn = document.getElementById('btnSendPromo');
-    const amount = document.getElementById('promoAmount').value || '0';
+    const btn    = document.getElementById('btnSendPromo');
+    const amount = document.getElementById('promoAmount').value.replace(/\D/g,'') || '0';
+
     btn.disabled = true;
     btn.innerHTML = `
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="animation:spin 1s linear infinite">
@@ -243,15 +247,31 @@
       </svg>
       Mengirim...
     `;
-    setTimeout(() => {
+
+    fetch('{{ route("sisir.promo.send") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': CSRF,
+      },
+      body: JSON.stringify({ discount_amount: parseInt(amount) }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      showToast(data.message || '✅ Promo berhasil dikirim!');
+    })
+    .catch(() => {
+      showToast('❌ Gagal mengirim promo. Coba lagi.');
+    })
+    .finally(() => {
       btn.disabled = false;
       btn.innerHTML = `
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 9L16 2L12 16L9 11L2 9Z" stroke="white" stroke-width="2" stroke-linejoin="round"/></svg>
         Kirim Promo Sekarang
       `;
-      showToast('🎉 Promo Rp ' + amount + ' berhasil dikirim ke semua pelanggan!');
-    }, 1500);
+    });
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </script>
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 @endsection
