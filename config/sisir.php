@@ -24,6 +24,7 @@ return [
         'verify_token'      => env('WHATSAPP_VERIFY_TOKEN', 'sisir_verify_token'),
         'api_version'       => env('WHATSAPP_API_VERSION', 'v19.0'),
         'base_url'          => 'https://graph.facebook.com',
+        'node_url'          => env('WHATSAPP_NODE_URL', 'http://localhost:3000'),
         'rate_limit_per_min' => (int) env('SISIR_WA_RATE_LIMIT_PER_MINUTE', 30),
     ],
 
