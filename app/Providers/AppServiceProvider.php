@@ -31,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+
+
         // ── Rate Limiters ────────────────────────────────────────────────────
 
         // Broadcast rate limiter: prevents Meta API blocks on mass WA sends

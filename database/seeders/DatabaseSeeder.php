@@ -64,19 +64,19 @@ class DatabaseSeeder extends Seeder
             foreach (range(1, 6) as $day) {   // 1 = Monday … 6 = Saturday
                 BarberSchedule::firstOrCreate(
                     ['barber_id' => $barber->id, 'day_of_week' => $day],
-                    ['open_time' => '09:00:00', 'close_time' => '20:00:00', 'is_active' => true]
+                    ['open_time' => '09:00:00', 'close_time' => '21:00:00', 'is_active' => true]
                 );
             }
         }
 
         // ── Services ──────────────────────────────────────────────────────────
         $servicesData = [
-            ['name' => 'Potong Rambut Biasa',                            'duration_minutes' => 30, 'price' => 25000],
-            ['name' => 'Fade & Taper',                                   'duration_minutes' => 45, 'price' => 40000],
+            ['name' => 'Basic Haircut',                                  'duration_minutes' => 30, 'price' => 25000],
+            ['name' => 'Haircut & Wash',                                 'duration_minutes' => 45, 'price' => 40000],
+            ['name' => 'Full Treatment',                                 'duration_minutes' => 90, 'price' => 100000],
             ['name' => 'Pompadour Styling',                              'duration_minutes' => 60, 'price' => 60000],
             ['name' => 'Creambath & Treatment',                          'duration_minutes' => 60, 'price' => 75000],
             ['name' => 'Cukur Jenggot',                                  'duration_minutes' => 20, 'price' => 20000],
-            ['name' => 'Paket Lengkap (Potong + Jenggot + Creambath)',   'duration_minutes' => 90, 'price' => 100000],
         ];
 
         $serviceModels = [];
@@ -178,7 +178,32 @@ class DatabaseSeeder extends Seeder
                     : null,
             ]);
 
-            $bookingsCreated++;
+        }
+        
+        // Seed conflict bookings for today at 19:00, 19:30, and 20:00 for both barbers to trigger renegotiation scenario
+        $conflictTimes = ['19:00:00', '19:30:00', '20:00:00'];
+        foreach ($barbers as $bIdx => $barber) {
+            foreach ($conflictTimes as $tIdx => $timeStr) {
+                $custIdx = ($bIdx * 3 + $tIdx) % count($customers);
+                $customer = $customers[$custIdx];
+                $service = $serviceModels[0]; // Basic Haircut
+                $scheduledAt = Carbon::today('Asia/Jakarta')->setTimeFromTimeString($timeStr);
+
+                Booking::firstOrCreate(
+                    [
+                        'barber_id' => $barber->id,
+                        'scheduled_at' => $scheduledAt,
+                    ],
+                    [
+                        'customer_id' => $customer->id,
+                        'service_id' => $service->id,
+                        'status' => BookingStatus::BOOKED->value,
+                        'dp_amount' => $dp,
+                    ]
+                );
+
+                $bookingsCreated++;
+            }
         }
 
         // ── Dummy Waitlist entries ────────────────────────────────────────────

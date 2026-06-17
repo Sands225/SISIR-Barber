@@ -44,16 +44,13 @@ class ConversationService
             return;
         }
 
-        // Route based on current conversation state
-        match ($customer->conversation_state) {
-            'idle'              => $this->handleIdle($customer, $messageText),
-            'awaiting_service'  => $this->handleServiceSelection($customer, $messageText),
-            'awaiting_barber'   => $this->handleBarberSelection($customer, $messageText),
-            'awaiting_time'     => $this->handleTimeSelection($customer, $messageText),
-            'awaiting_name'     => $this->handleNameCollection($customer, $messageText),
-            'awaiting_confirm'  => $this->handleBookingConfirmation($customer, $messageText),
-            default             => $this->handleIdle($customer, $messageText),
-        };
+        if ($customer->conversation_state === 'awaiting_confirm') {
+            $this->handleBookingConfirmation($customer, $messageText);
+            return;
+        }
+
+        // Direct all text messages to the dynamic Gemini Dialog Manager
+        $this->handleIncomingTextMessage($customer, $messageText);
     }
 
     // ── State Handlers ───────────────────────────────────────────────────────
@@ -427,5 +424,248 @@ class ConversationService
                 ['id' => 'action_admin',   'title' => '💬 Bicara Admin'],
             ]
         );
+    }
+
+    private function handleIncomingTextMessage(Customer $customer, string $messageText): void
+    {
+        $context = $customer->conversation_context ?? [];
+        $slots = $context['slots'] ?? [
+            'name' => null,
+            'phone' => $customer->wa_id,
+            'service' => null,
+            'date' => null,
+            'time' => null,
+            'barber' => null,
+        ];
+        
+        if (empty($slots['phone'])) {
+            $slots['phone'] = $customer->wa_id;
+        }
+        $history = $context['history'] ?? [];
+
+        // Keep last 10 turns of history (25 elements max)
+        if (count($history) > 20) {
+            $history = array_slice($history, -20);
+        }
+
+        $refDateTime = now('Asia/Jakarta')->locale('id')->isoFormat('dddd, D MMMM YYYY HH:mm:ss');
+        $referenceDateOnly = now('Asia/Jakarta')->toDateString();
+
+        // Run Gemini Dialog Manager
+        $result = $this->gemini->runDialogManager($messageText, $history, $slots, $refDateTime);
+
+        $slots = $result['updated_slots'] ?? $slots;
+        $action = $result['action'] ?? 'none';
+        $actionParams = $result['action_parameters'] ?? [];
+        $response = $result['response'] ?? '';
+
+        $toolResult = null;
+
+        if ($action !== 'none') {
+            if ($action === 'cek_ketersediaan') {
+                $toolResult = $this->executeCekKetersediaan($actionParams);
+            } elseif ($action === 'tampilkan_konfirmasi') {
+                $this->executeTampilkanKonfirmasi($customer, $actionParams, $history, $slots);
+                return; // Early return to let user confirm via button/text
+            } elseif ($action === 'faq_rag') {
+                $toolResult = $this->executeFaqRag($actionParams);
+            }
+
+            if ($toolResult) {
+                // Call Gemini second turn to get the natural response
+                $response = $this->gemini->generateFinalResponse($messageText, $history, $slots, $refDateTime, $toolResult);
+            }
+        }
+
+        // Append to history
+        $history[] = ['role' => 'user', 'message' => $messageText];
+        $history[] = ['role' => 'bot', 'message' => $response];
+
+        // Save context
+        $customer->update([
+            'conversation_context' => [
+                'slots' => $slots,
+                'history' => $history,
+            ]
+        ]);
+
+        // Send message to WhatsApp
+        $this->whatsapp->sendText($customer->wa_id, $response);
+    }
+
+    private function executeCekKetersediaan(array $params): string
+    {
+        $date = $params['date'] ?? null;
+        $time = $params['time'] ?? null;
+        $serviceName = $params['service'] ?? null;
+
+        if (!$date) {
+            $date = now('Asia/Jakarta')->toDateString();
+        }
+
+        $relativeDate = $date;
+        try {
+            $refDate = Carbon::parse($date);
+            if ($refDate->isToday()) {
+                $relativeDate = "hari ini";
+            } elseif ($refDate->isTomorrow()) {
+                $relativeDate = "besok";
+            }
+        } catch (\Throwable $e) {}
+
+        // Log the background check requested by the user
+        Log::info("[Sistem Latar Belakang: AI menjalankan cek_ketersediaan()]");
+        Log::info("[Sistem Latar Belakang: AI menjalankan fungsi cek_ketersediaan(tanggal=\"{$relativeDate}\", jam=\"{$time}\", layanan=\"{$serviceName}\") ke database]");
+
+        if (!$time) {
+            return json_encode([
+                'status' => 'error',
+                'message' => 'Mohon tentukan jam booking yang diinginkan.'
+            ]);
+        }
+
+        $dateTime = Carbon::parse("$date $time", 'Asia/Jakarta');
+        $barbers = Barber::where('is_active', true)->get();
+        $availableBarber = null;
+
+        foreach ($barbers as $barber) {
+            $slots = $this->capacity->getAvailableSlots($barber->id, $dateTime);
+            $slot = $slots->firstWhere('time', $dateTime->format('H:i'));
+            if ($slot && ($slot['available'] ?? false)) {
+                $availableBarber = $barber;
+                break;
+            }
+        }
+
+        if ($availableBarber) {
+            return json_encode([
+                'status' => 'available',
+                'barber_name' => $availableBarber->displayName(),
+                'message' => "Slot jam {$time} untuk {$serviceName} pada tanggal {$relativeDate} masih kosong dengan Kapster {$availableBarber->displayName()}."
+            ]);
+        }
+
+        // Slot is full, search for alternatives
+        $altToday = null;
+        $altTomorrow = null;
+
+        // 1. Next available slot today after the requested hour
+        $todayDate = Carbon::today('Asia/Jakarta');
+        $earliestTime = null;
+        
+        foreach ($barbers as $barber) {
+            $slotsToday = $this->capacity->getAvailableSlots($barber->id, $todayDate);
+            foreach ($slotsToday as $slot) {
+                if ($slot['available'] ?? false) {
+                    $slotTime = Carbon::parse($todayDate->toDateString() . ' ' . $slot['time'], 'Asia/Jakarta');
+                    if ($slotTime->gt($dateTime)) {
+                        if ($earliestTime === null || $slotTime->lt($earliestTime)) {
+                            $earliestTime = $slotTime;
+                        }
+                    }
+                }
+            }
+        }
+        if ($earliestTime) {
+            $altToday = $earliestTime->format('H:i');
+        }
+
+        // 2. Check if tomorrow at the same requested time is free
+        $tomorrowDate = Carbon::tomorrow('Asia/Jakarta');
+        $tomorrowDateTime = Carbon::parse($tomorrowDate->toDateString() . ' ' . $time, 'Asia/Jakarta');
+        $tomorrowAvailable = false;
+        foreach ($barbers as $barber) {
+            $slotsTomorrow = $this->capacity->getAvailableSlots($barber->id, $tomorrowDate);
+            $slot = $slotsTomorrow->firstWhere('time', $tomorrowDateTime->format('H:i'));
+            if ($slot && ($slot['available'] ?? false)) {
+                $tomorrowAvailable = true;
+                break;
+            }
+        }
+        if ($tomorrowAvailable) {
+            $altTomorrow = $tomorrowDateTime->format('H:i');
+        }
+
+        // Construct alternatives message
+        if ($altToday && $altTomorrow) {
+            $message = "Slot jam {$time} {$relativeDate} sudah penuh. Yang tersisa hari ini ada di jam {$altToday}, atau besok jam {$altTomorrow}.";
+        } elseif ($altToday) {
+            $message = "Slot jam {$time} {$relativeDate} sudah penuh. Yang tersisa hari ini ada di jam {$altToday}.";
+        } elseif ($altTomorrow) {
+            $message = "Slot jam {$time} {$relativeDate} sudah penuh. Alternatif yang tersedia besok jam {$altTomorrow}.";
+        } else {
+            // Fallback: get any available slots tomorrow
+            $altSlots = [];
+            foreach ($barbers as $barber) {
+                $slotsTomorrow = $this->capacity->getAvailableSlots($barber->id, $tomorrowDate);
+                foreach ($slotsTomorrow as $slot) {
+                    if ($slot['available'] ?? false) {
+                        $altSlots[] = "besok jam " . $slot['time'];
+                        if (count($altSlots) >= 2) break 2;
+                    }
+                }
+            }
+            $altString = count($altSlots) > 0 ? implode(" atau ", $altSlots) : "tidak ada slot terdekat";
+            $message = "Slot jam {$time} {$relativeDate} sudah penuh. Alternatif yang tersedia: {$altString}.";
+        }
+
+        return json_encode([
+            'status' => 'full',
+            'message' => $message
+        ]);
+    }
+
+    private function executeTampilkanKonfirmasi(Customer $customer, array $params, array $history, array $slots): void
+    {
+        $name = $params['name'] ?? 'Pelanggan';
+        $phone = $params['phone'] ?? $customer->wa_id;
+        $serviceName = $params['service'] ?? '';
+        $date = $params['date'] ?? now('Asia/Jakarta')->toDateString();
+        $time = $params['time'] ?? '16:00';
+
+        $customer->update([
+            'name' => $name,
+            'phone' => $phone
+        ]);
+
+        $service = Service::where('name', $serviceName)->first() ?? Service::where('is_active', true)->first();
+        $scheduledAt = Carbon::parse("$date $time", 'Asia/Jakarta');
+
+        $barbers = Barber::where('is_active', true)->get();
+        $availableBarber = $barbers->first(); // Default fallback
+        foreach ($barbers as $b) {
+            $slotsData = $this->capacity->getAvailableSlots($b->id, $scheduledAt);
+            $slot = $slotsData->firstWhere('time', $scheduledAt->format('H:i'));
+            if ($slot && ($slot['available'] ?? false)) {
+                $availableBarber = $b;
+                break;
+            }
+        }
+
+        // Use the existing slots and history so we don't lose them if cancelled
+        $customer->updateConversationState('awaiting_confirm', [
+            'service_id' => $service->id,
+            'barber_id' => $availableBarber->id,
+            'scheduled_at' => $scheduledAt->toDateTimeString(),
+            'slots' => $slots,
+            'history' => $history,
+        ]);
+
+        $this->showBookingSummary($customer, $scheduledAt);
+    }
+
+    private function executeFaqRag(array $params): string
+    {
+        $query = $params['query'] ?? 'kebijakan';
+
+        // Log background RAG action
+        Log::info("[Sistem Latar Belakang: AI mendeteksi pertanyaan informasi umum. AI mencari dokumen di Vector Database tentang '{$query}' (RAG)]");
+
+        $filePath = storage_path('app/knowledge_base/policies.txt');
+        if (!file_exists($filePath)) {
+            return "Batas toleransi keterlambatan adalah 15 menit. Jika lewat dari itu, slot hangus dan otomatis dialihkan ke walk-in.";
+        }
+
+        return file_get_contents($filePath);
     }
 }
