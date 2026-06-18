@@ -28,6 +28,40 @@ class WhatsAppService
     }
 
     /**
+     * Send a media message (like an image).
+     */
+    public function sendMedia(string $waId, string $mediaUrl, string $caption = ''): bool
+    {
+        $url = "{$this->nodeUrl}/send-media";
+
+        try {
+            $res = $this->http->post($url, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'to'       => $waId,
+                    'mediaUrl' => $mediaUrl,
+                    'message'  => $caption,
+                ],
+            ]);
+
+            $status = $res->getStatusCode();
+            $ok     = $status >= 200 && $status < 300;
+
+            if (! $ok) {
+                Log::error('[WhatsAppService] Send media failed', ['status' => $status, 'wa_id' => $waId]);
+            }
+
+            return $ok;
+        } catch (\Throwable $e) {
+            Log::error('[WhatsAppService] HTTP error connecting to Node.js server (Media)', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
      * Send interactive reply buttons.
      *
      * @param array<array{id: string, title: string}> $buttons

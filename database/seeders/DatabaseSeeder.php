@@ -104,6 +104,26 @@ class DatabaseSeeder extends Seeder
             Setting::firstOrCreate(['key' => $setting['key']], $setting);
         }
 
+        // ── FAQs ──────────────────────────────────────────────────────────────
+        $faqs = [
+            [
+                'question' => 'Apakah ada tempat parkir luas?',
+                'answer'   => 'Ya, SISIR Barber menyediakan parkir gratis yang luas untuk motor dan mobil di depan toko.',
+            ],
+            [
+                'question' => 'Metode pembayaran apa saja yang diterima?',
+                'answer'   => 'Kami menerima pembayaran tunai (cash) dan cashless (QRIS, transfer bank, e-wallet).',
+            ],
+            [
+                'question' => 'Jam operasional SISIR Barber buka jam berapa saja?',
+                'answer'   => 'Kami buka setiap hari Senin sampai Sabtu, mulai jam 09:00 pagi hingga 21:00 malam. Hari Minggu kami libur.',
+            ],
+        ];
+
+        foreach ($faqs as $faq) {
+            \App\Models\Faq::firstOrCreate(['question' => $faq['question']], array_merge($faq, ['is_active' => true]));
+        }
+
         // ── Dummy Customers ───────────────────────────────────────────────────
         $customerData = [
             ['name' => 'Reza Firmansyah', 'phone' => '6281234567001', 'wa_id' => '6281234567001'],

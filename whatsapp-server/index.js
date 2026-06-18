@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 
@@ -108,6 +108,35 @@ app.post('/send', async (req, res) => {
         return res.status(200).json({ success: true, response });
     } catch (err) {
         console.error(`[SEND ERROR] Failed to send to ${to}: ${err.message}`);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Express Endpoint for Laravel to send media (like QR Codes)
+app.post('/send-media', async (req, res) => {
+    const { to, mediaUrl, message } = req.body;
+
+    if (!to || !mediaUrl) {
+        return res.status(400).json({ success: false, error: 'Missing "to" or "mediaUrl" fields.' });
+    }
+
+    try {
+        let chatId = to;
+        if (!to.includes('@')) {
+            chatId = `${to}@c.us`;
+            const contactId = await client.getNumberId(to);
+            if (contactId) {
+                chatId = contactId._serialized;
+            }
+        }
+
+        const media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true });
+        const response = await client.sendMessage(chatId, media, { caption: message || '' });
+
+        console.log(`[OUTGOING MEDIA] Sent to ${chatId}: ${mediaUrl}`);
+        return res.status(200).json({ success: true, response });
+    } catch (err) {
+        console.error(`[SEND MEDIA ERROR] Failed to send media to ${to}: ${err.message}`);
         return res.status(500).json({ success: false, error: err.message });
     }
 });

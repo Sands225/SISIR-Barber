@@ -130,6 +130,15 @@ class MidtransWebhookController extends Controller
             $booking->service_id
         )->onQueue('broadcasts');
 
+        // Notify user about cancellation
+        $booking->loadMissing('customer');
+        if ($booking->customer && $booking->customer->wa_id) {
+            $message = "❌ Mohon maaf Kak {$booking->customer->name}, waktu pembayaran DP (10 menit) telah habis. "
+                . "Reservasi Kakak otomatis dibatalkan oleh sistem.\n\n"
+                . "Silakan membuat reservasi ulang jika masih ingin cukur ya! 👋";
+            app(\App\Services\WhatsAppService::class)->sendText($booking->customer->wa_id, $message);
+        }
+
         Log::info('[MidtransWebhook] Payment expired, slot released', ['booking_id' => $booking->id]);
     }
 }

@@ -3,311 +3,218 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
-use Illuminate\Support\Carbon;
+use GuzzleHttp\Exception\ClientException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class GeminiService
 {
     private Client $http;
-    private string $apiKey;
+    private array  $apiKeys;  // Pool of API keys for rotation
     private string $model;
     private string $baseUrl;
 
+    /** Max retries per key before rotating to the next one */
+    private const MAX_RETRIES_PER_KEY = 2;
+
+    /** Base delay in seconds for exponential backoff */
+    private const BACKOFF_BASE_SECONDS = 2;
+
     public function __construct()
     {
-        $this->apiKey  = config('sisir.gemini.api_key');
+        $this->apiKeys = $this->resolveApiKeys();
         $this->model   = config('sisir.gemini.model', 'gemini-2.0-flash');
         $this->baseUrl = config('sisir.gemini.base_url');
-        $this->http    = new Client(['timeout' => 15.0, 'verify' => false]);
+        $this->http    = new Client(['timeout' => 20.0, 'verify' => false]);
     }
 
     /**
-     * Zero-shot intent classification.
-     * Returns structured array with intent and extracted entities.
+     * Dialog Manager: deteksi intent, ekstrak slot, dan hasilkan respons natural.
+     * Mengembalikan array terstruktur untuk ConversationService.
      *
-     * Possible intents: booking, reschedule, cancel, status_check, waitlist, faq, ambiguous
-     */
-    public function parseIntent(string $message, string $waId, array $context = []): array
-    {
-        $systemPrompt = $this->buildIntentSystemPrompt($context);
-        $response     = $this->callGemini($systemPrompt, $message);
-
-        return $this->parseJsonResponse($response) ?? [
-            'intent'  => 'ambiguous',
-            'options' => ['manual_pick', 'talk_to_admin'],
-            'raw'     => $response,
-        ];
-    }
-
-    /**
-     * Natural language time parsing engine.
-     * Converts Indonesian time expressions to Carbon instance.
-     *
-     * Examples:
-     *   "abis dzuhur"   → Carbon(13:00)
-     *   "besok sore"    → Carbon(tomorrow, 16:00)
-     *   "jam 3 siang"   → Carbon(today, 15:00)
-     */
-    public function parseTime(string $naturalTime, ?Carbon $referenceDate = null): ?Carbon
-    {
-        $reference = $referenceDate ?? now()->timezone('Asia/Jakarta');
-        $prompt    = $this->buildTimeParsingSystemPrompt($reference->toDateString());
-        $response  = $this->callGemini($prompt, $naturalTime);
-        $parsed    = $this->parseJsonResponse($response);
-
-        if (! $parsed || ! isset($parsed['datetime'])) {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($parsed['datetime'], 'Asia/Jakarta');
-        } catch (\Throwable $e) {
-            Log::warning('[GeminiService] Time parse failed', ['response' => $parsed, 'error' => $e->getMessage()]);
-
-            return null;
-        }
-    }
-
-    /**
-     * Check if a message has high ambiguity (Gemini returns AMBIGUOUS intent).
-     */
-    public function isAmbiguous(array $intentResult): bool
-    {
-        return ($intentResult['intent'] ?? '') === 'ambiguous';
-    }
-
-    /**
-     * Dialog Manager to handle natural slot collection, FAQ RAG, and OOT detection.
+     * Intent yang mungkin: booking | faq | handover | oot | error
      */
     public function runDialogManager(string $message, array $history, array $slots, string $referenceDate): array
     {
         $systemPrompt = $this->buildDialogManagerSystemPrompt($slots, $history, $referenceDate);
         $response     = $this->callGemini($systemPrompt, $message);
-        
-        $decoded = $this->parseJsonResponse($response);
-        
-        if (is_array($decoded) && (isset($decoded['response']) || isset($decoded['action'])) && !empty($decoded['response']) && $decoded['response'] !== 'Maaf, saya kurang mengerti maksudmu. Bisa diulangi?') {
+        $decoded      = $this->parseJsonResponse($response);
+
+        if (
+            is_array($decoded)
+            && isset($decoded['intent'], $decoded['updated_slots'], $decoded['response'])
+            && !empty($decoded['response'])
+        ) {
+            // Pastikan all_slots_complete default ke false jika tidak ada
+            $decoded['all_slots_complete'] = $decoded['all_slots_complete'] ?? false;
             return $decoded;
         }
-        
-        // Local Fallback: trigger when API fails or rate-limited
-        Log::warning('[GeminiService] API runDialogManager call failed or was rate-limited.');
+
+        Log::warning('[GeminiService] Dialog manager returned invalid or empty response, using fallback.');
+
         return [
-            'intent' => 'ambiguous',
-            'updated_slots' => $slots,
-            'action' => 'none',
-            'action_parameters' => [],
-            'response' => 'Maaf kak, sistem AI kami sedang lambat memproses. Boleh coba ketik ulang pesan kakak sekali lagi?'
+            'intent'             => 'error',
+            'updated_slots'      => $slots,
+            'all_slots_complete' => false,
+            'response'           => 'Mohon maaf Kak, sistem kami sedang sibuk sebentar 🙏 Boleh coba kirim pesan lagi dalam beberapa saat?',
         ];
     }
 
-    /**
-     * Generate the final natural response based on the outcome of a background action.
-     */
-    public function generateFinalResponse(string $message, array $history, array $slots, string $referenceDate, string $toolResult): string
-    {
-        $systemPrompt = $this->buildFinalResponseSystemPrompt($slots, $history, $referenceDate, $toolResult);
-        $response     = $this->callGemini($systemPrompt, $message);
-        
-        $decoded = $this->parseJsonResponse($response);
-        if (isset($decoded['response']) && !empty($decoded['response']) && $decoded['response'] !== 'Maaf, sepertinya sedang ada gangguan koneksi dengan server AI saya. Bisa diulangi?') {
-            return $decoded['response'];
-        }
-        
-        // Local Fallback: trigger when API fails or rate-limited
-        Log::warning('[GeminiService] API generateFinalResponse call failed or was rate-limited.');
-        return 'Maaf kak, proses gagal karena gangguan AI sesaat. Mohon ulangi ya kak.';
-    }
+    // ── Private ──────────────────────────────────────────────────────────────
 
     private function buildDialogManagerSystemPrompt(array $slots, array $history, string $referenceDate): string
     {
-        $slotsJson = json_encode($slots, JSON_PRETTY_PRINT);
-        $historyJson = json_encode($history, JSON_PRETTY_PRINT);
+        $slotsJson   = json_encode($slots,   JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $historyJson = json_encode($history, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        $today    = now('Asia/Jakarta')->toDateString();
+        $tomorrow = now('Asia/Jakarta')->addDay()->toDateString();
 
         try {
-            $services = \App\Models\Service::where('is_active', true)->get();
-            $servicesText = '';
-            foreach ($services as $index => $s) {
-                $num = $index + 1;
-                $servicesText .= "{$num}. {$s->name} (Rp " . number_format($s->price, 0, ',', '.') . ", durasi {$s->duration_minutes} menit)\n";
-            }
+            $services     = \App\Models\Service::where('is_active', true)->get();
+            $servicesText = $services->map(
+                fn($s) => "- {$s->name} (Rp " . number_format($s->price, 0, ',', '.') . ", {$s->duration_minutes} menit)"
+            )->join("\n");
         } catch (\Throwable $e) {
-            $servicesText = "1. Cukur Anak-anak (Rp 25.000, durasi 30 menit)\n2. Cukur Dewasa (Rp 35.000, durasi 30 menit)\n3. Cukur Gundul (Rp 20.000, durasi 20 menit)\n4. Potong Jenggot & Kumis (Rp 15.000, durasi 20 menit)";
+            $servicesText = "- Cukur Anak-anak (Rp 25.000, 30 menit)\n"
+                . "- Cukur Dewasa (Rp 35.000, 30 menit)\n"
+                . "- Cukur Gundul (Rp 20.000, 20 menit)\n"
+                . "- Potong Jenggot & Kumis (Rp 15.000, 20 menit)";
         }
 
         try {
-            $barbers = \App\Models\Barber::where('is_active', true)->get();
-            $barbersText = '';
-            foreach ($barbers as $barber) {
-                $barbersText .= "- {$barber->displayName()} (nickname: {$barber->nickname})\n";
-            }
+            $faqs     = \App\Models\Faq::where('is_active', true)->get();
+            $faqsText = $faqs->map(fn($f) => "T: {$f->question}\nJ: {$f->answer}")->join("\n\n");
         } catch (\Throwable $e) {
-            $barbersText = "- Budi (Bang Budi)\n- Andi (Kang Andi)";
+            $faqsText = "T: Jam buka?\nJ: Setiap hari 08:00 - 20:00 WIB.";
         }
 
         return <<<PROMPT
-# IDENTITAS
-Kamu adalah SISIR, asisten pemesanan WhatsApp untuk SISIR Barber yang modern, hangat, dan profesional.
-Kamu bertugas membantu pelanggan melakukan reservasi, cek jadwal, menjawab FAQ, dan menolak permintaan di luar topik.
+# ROLE
+Kamu adalah SISIR, AI Customer Service Virtual untuk "SISIR Barber".
+Tugas kamu: menjawab pertanyaan seputar layanan barbershop, mengumpulkan data reservasi, dan mengarahkan ke pembayaran.
 
 ---
-# KEPRIBADIAN & GAYA BICARA
-- Bicara santai, hangat, dan natural seperti teman yang membantu. Gunakan "kak" atau "bang".
-- JANGAN terlalu formal atau kaku.
-- JANGAN mengulang sapaan ("Halo", "Hai") jika percakapan sudah berlangsung.
-- JANGAN minta maaf berlebihan. Hanya gunakan "maaf" jika slot memang penuh.
-- JANGAN pernah bertanya sesuatu yang sudah dijawab pelanggan di percakapan sebelumnya.
-- Jika pelanggan memberi info baru atau mengganti data (misal ganti jam atau layanan), terima dengan santai, update slot, lanjut alur.
-- Jika pelanggan menggabungkan banyak info dalam satu pesan (misal "besok jam 3 sore, basic haircut, nama saya Eko"), ekstrak semua sekaligus dan langsung ke langkah berikutnya.
-
----
-# WAKTU & REFERENSI
+# WAKTU REFERENSI
 Waktu saat ini (Asia/Jakarta): {$referenceDate}
-
-Parsing waktu Indonesia:
-- "pagi" → 08:00-11:00 (gunakan jam tepat jika ada, misal "jam 8 pagi" = 08:00)
-- "siang" → 12:00
-- "sore" → 16:00 (gunakan jam tepat jika ada, misal "jam 3 sore" = 15:00)
-- "malam" → 19:00 (gunakan jam tepat jika ada, misal "jam 9 malam" = 21:00)
-- "besok" → tanggal besok
-- "hari ini" → tanggal hari ini
-- "lusa" → 2 hari dari sekarang
-- Nama hari ("Senin", "Sabtu") → hari terdekat berikutnya
+Hari ini: {$today}
+Besok: {$tomorrow}
 
 ---
-# DATA BISNIS
-Layanan tersedia:
+# DATA LAYANAN TERSEDIA
 {$servicesText}
-Kapster aktif:
-{$barbersText}
+
+---
+# FAQ / PENGETAHUAN UMUM
+{$faqsText}
 
 ---
 # DATA PERCAKAPAN SAAT INI
-Slot yang sudah terkumpul:
+Slot reservasi yang sudah terkumpul (JANGAN tanya ulang data yang sudah ada):
 {$slotsJson}
 
 Riwayat percakapan (terbaru di bawah):
 {$historyJson}
 
 ---
-# ATURAN EKSTRASI SLOT (SANGAT PENTING)
-- **service**: Harus salah satu nama layanan yang tersedia (case-insensitive). Jika pelanggan bilang "cukur", "potong", "rapiin", "pangkas" → set "Basic Haircut". JANGAN tanya lagi jika sudah diisi.
-- **date**: Konversi ekspresi tanggal Indonesia ke format "YYYY-MM-DD".
-- **time**: Konversi ke format "HH:MM". "jam 4 sore" = "16:00", "jam 8 pagi" = "08:00", "9 malam" = "21:00".
-- **name**: Ekstrak nama pelanggan dari pesannya. Jika pelanggan menjawab pertanyaan nama dengan satu atau dua kata, itu PASTI namanya.
-- **phone**: JANGAN pernah ditanyakan. Sudah otomatis diisi sistem.
-- **Jika pelanggan mengubah data** (misal ganti jam atau layanan), langsung update slot tanpa protes.
+# KEPRIBADIAN & GAYA BICARA
+- Ramah, asyik, sopan, dan helpful.
+- Gunakan sapaan "Kak" kepada pelanggan.
+- Gunakan emoji secukupnya untuk menghidupkan suasana.
+- JANGAN ulangi sapaan "Halo" / "Hai" jika percakapan sudah berlangsung.
+- JANGAN tanya data yang sudah ada di slot (tidak null).
+- JANGAN PERNAH tanya nomor HP atau telepon.
+- Jika pelanggan mengubah data yang sudah ada, terima dengan santai dan update slot.
 
 ---
-# ALUR PEMESANAN (IKUTI DENGAN KETAT)
+# ANALISIS INTENT & TINDAKAN
 
-## LANGKAH 1 — Kumpulkan: Layanan, Tanggal, Jam
-- Jika pelanggan menyebut keinginan booking tapi data tidak lengkap, tanya yang **belum ada saja**.
-- JANGAN tanya ulang yang sudah ada.
-- Begitu layanan + tanggal + jam sudah lengkap: jalankan action "cek_ketersediaan".
-- Contoh: pelanggan baru bilang "besok sore" tapi belum sebut jam → tanya jamnya saja.
+## A. INTENT: BERTANYA (faq)
+- Jika pelanggan menanyakan informasi (harga, lokasi, jam buka, durasi cukur, dll).
+- Jawab dengan ramah dan informatif berdasarkan data layanan dan FAQ di atas.
+- Setelah menjawab, tawarkan kembali untuk melakukan reservasi.
+- Set intent: "faq"
 
-## LANGKAH 2 — Cek Ketersediaan
-- Jika slot tersedia: tanya nama pelanggan.
-- Jika slot penuh: informasikan dan tawarkan alternatif dari hasil cek.
+## B. INTENT: MINTA BICARA DENGAN ADMIN (handover)
+- Jika pelanggan meminta admin/manusia, mengeluh hal kompleks, atau menggunakan kata kunci:
+  "admin", "manusia", "cs", "sambungkan", "operator", "minta tolong", dll.
+- Set intent: "handover"
+- Response WAJIB: "Baik Kak, mohon ditunggu sebentar ya. Chat Kakak sedang aku sambungkan ke Admin kami. 👨‍💼"
 
-## LANGKAH 3 — Tanya Nama
-- Hanya tanya nama, JANGAN tanya nomor HP.
-- Jika pelanggan sudah menyebut namanya sebelumnya (ada di history atau slots), SKIP langkah ini, langsung ke konfirmasi.
-- Begitu nama terkumpul: jalankan action "tampilkan_konfirmasi".
+## C. INTENT: RESERVASI (booking)
+- Set intent: "booking"
+- 4 data yang WAJIB dikumpulkan secara bertahap:
+  1. **name**: nama pelanggan
+  2. **service**: salah satu dari layanan di atas (nama persis)
+  3. **day**: tanggal kedatangan → konversi ke format **"YYYY-MM-DD"**
+  4. **time**: jam kedatangan → konversi ke format **"HH:MM"**
 
-## LANGKAH 4 — Konfirmasi & Pembayaran
-- Sistem akan menampilkan ringkasan booking.
-- Jika pelanggan konfirmasi: sistem buat booking dan kirim QR Midtrans (ditangani ConversationService).
+- Jika data BELUM lengkap (ada yang null):
+  - Tanyakan HANYA data yang masih null, dengan ramah.
+  - Gunakan template jika perlu: "Baik Kak [nama], untuk layanannya mau pilih yang mana?"
+  - Set all_slots_complete: false
 
----
-# ATURAN INTENT & ACTION
+- Jika data SUDAH LENGKAP (semua 4 data bukan null):
+  - Set all_slots_complete: true
+  - Response: konfirmasi ringkas bahwa data sudah diterima dan akan diproses.
+  - Contoh: "Oke Kak [nama]! Data reservasinya sudah lengkap, aku proses sekarang ya ✂️"
 
-**OOT (Out Of Topic):**
-- Jika pesan tidak berhubungan sama sekali dengan SISIR Barber, booking, atau layanan:
-  - intent: "oot", action: "none"
-  - Tolak dengan ramah: "Wah, saya khusus bantu reservasi dan info SISIR Barber kak. Ada yang mau dipesan?"
-
-**FAQ:**
-- Jika pelanggan bertanya soal info umum (jam buka, harga, kebijakan telat, dll):
-  - intent: "faq", action: "faq_rag"
-  - action_parameters: {"query": "<kata kunci pertanyaan>"}
-
-**BOOKING:**
-- Jika layanan + tanggal + jam sudah ada → action: "cek_ketersediaan"
-  - action_parameters: {"date": "YYYY-MM-DD", "time": "HH:MM", "service": "<nama layanan>"}
-- Jika SEMUA slot sudah ada (termasuk nama) DAN slot sudah dicek tersedia → action: "tampilkan_konfirmasi"
-  - action_parameters: {"name": "<nama>", "phone": "<phone dari slots>", "date": "YYYY-MM-DD", "time": "HH:MM", "service": "<nama layanan>"}
-- Jika data masih belum lengkap → action: "none", tanya yang kurang dengan natural.
+## D. OUT OF TOPIC (oot)
+- Jika pesan tidak berhubungan sama sekali dengan SISIR Barber atau layanan barbershop.
+- Set intent: "oot"
+- Response: "Wah, aku khusus bantu reservasi dan info SISIR Barber aja Kak 😊 Ada yang mau dipesan?"
 
 ---
-# FORMAT RESPONS
-Respond HANYA dengan JSON valid berikut:
+# ATURAN KONVERSI SLOT (PENTING)
+- **day** (konversi ke YYYY-MM-DD):
+  - "hari ini" → {$today}
+  - "besok" → {$tomorrow}
+  - "lusa" → hari sesudah besok
+  - Nama hari (Senin/Selasa/Rabu/Kamis/Jumat/Sabtu/Minggu) → tanggal terdekat hari tersebut dari sekarang
+  - Jika sudah format tanggal, gunakan apa adanya
+
+- **time** (konversi ke HH:MM):
+  - "pagi" (tanpa jam spesifik) → "09:00"
+  - "siang" → "12:00"
+  - "sore" (tanpa jam spesifik) → "16:00"
+  - "malam" (tanpa jam spesifik) → "19:00"
+  - "jam 3 sore" → "15:00", "jam 8 pagi" → "08:00", "9 malam" → "21:00"
+  - "abis dzuhur" / "habis dzuhur" → "13:00"
+  - "ashar" / "asar" → "15:30"
+
+- **service** (cocokkan fleksibel):
+  - "cukur biasa", "cukur pria", "potong rambut", "cukur dewasa", "cukur" (tanpa keterangan) → "Cukur Dewasa"
+  - "cukur anak", "cukur anak-anak", "anak" → "Cukur Anak-anak"
+  - "gundul", "botak", "cukur gundul" → "Cukur Gundul"
+  - "jenggot", "kumis", "brewok", "potong jenggot" → "Potong Jenggot & Kumis"
+
+---
+# FORMAT RESPONS (WAJIB JSON VALID, TIDAK ADA TEKS DI LUAR JSON)
 {
-  "intent": "booking | faq | oot | cancel | ambiguous",
+  "intent": "booking | faq | handover | oot",
   "updated_slots": {
     "name": "string atau null",
-    "phone": "string atau null",
-    "service": "string atau null",
-    "date": "YYYY-MM-DD atau null",
+    "service": "nama layanan persis sesuai daftar, atau null",
+    "day": "YYYY-MM-DD atau null",
     "time": "HH:MM atau null",
-    "barber": "string atau null"
+    "phone": null
   },
-  "action": "cek_ketersediaan | tampilkan_konfirmasi | faq_rag | none",
-  "action_parameters": {},
-  "response": "respons natural dalam Bahasa Indonesia (wajib jika action = 'none')"
+  "all_slots_complete": false,
+  "response": "respons natural dalam Bahasa Indonesia"
 }
 PROMPT;
     }
 
-    private function buildFinalResponseSystemPrompt(array $slots, array $history, string $referenceDate, string $toolResult): string
-    {
-        $slotsJson = json_encode($slots, JSON_PRETTY_PRINT);
-        $historyJson = json_encode($history, JSON_PRETTY_PRINT);
-
-        return <<<PROMPT
-# IDENTITAS
-Kamu adalah SISIR, asisten pemesanan WhatsApp untuk SISIR Barber yang hangat dan profesional.
-
-# KONTEKS
-Sistem baru saja menjalankan action di latar belakang, dan ini hasilnya:
-{$toolResult}
-
-Slot booking saat ini:
-{$slotsJson}
-
-Riwayat percakapan:
-{$historyJson}
-
-Waktu referensi (Asia/Jakarta): {$referenceDate}
-
-# TUGAS
-Berdasarkan hasil action di atas, tulis respons natural dalam Bahasa Indonesia kepada pelanggan.
-
-## Panduan respons berdasarkan hasil:
-- Jika status = "available" (slot tersedia): Informasikan slot tersedia dengan menyebut kapster yang ada, lalu **tanya nama pelanggan** (jika belum ada di slot).
-- Jika status = "full" (slot penuh): Sampaikan dengan santai, tawarkan alternatif waktu dari data yang ada. JANGAN terlalu formal.
-- Jika ini respons dari FAQ/RAG: Jawab pertanyaan pelanggan berdasarkan isi knowledge base. Gunakan bahasa yang mudah dipahami.
-- Jika ada data lain: Interpretasikan dan respons dengan natural.
-
-## Aturan gaya bicara:
-- Hangat, santai, gunakan "kak" atau "bang".
-- JANGAN ulangi sapaan.
-- JANGAN minta maaf berlebihan.
-- JANGAN tanya data yang sudah ada di slot (misal jangan tanya nama lagi jika sudah ada).
-
-Respond HANYA dengan JSON valid:
-{
-  "response": "respons natural dalam Bahasa Indonesia di sini"
-}
-PROMPT;
-    }
-
-    // ── Private Helpers ──────────────────────────────────────────────────────
-
+    /**
+     * Call Gemini API with automatic key rotation and exponential backoff retry.
+     *
+     * Strategy:
+     *  - Try each key up to MAX_RETRIES_PER_KEY times on 429 rate-limit.
+     *  - If all retries for a key are exhausted, rotate to the next key.
+     *  - If ALL keys are exhausted, return '{}' (triggers fallback response).
+     */
     private function callGemini(string $systemPrompt, string $userMessage): string
     {
-        $url  = "{$this->baseUrl}/models/{$this->model}:generateContent?key={$this->apiKey}";
         $body = [
             'system_instruction' => [
                 'parts' => [['text' => $systemPrompt]],
@@ -319,21 +226,102 @@ PROMPT;
                 ],
             ],
             'generationConfig' => [
-                'temperature'     => 0.1,
+                'temperature'      => 0.1,
                 'responseMimeType' => 'application/json',
             ],
         ];
 
-        try {
-            $res  = $this->http->post($url, ['json' => $body]);
-            $data = json_decode($res->getBody()->getContents(), true);
+        foreach ($this->apiKeys as $keyIndex => $apiKey) {
+            // Skip keys that are cooling down from daily quota exhaustion
+            if ($this->isKeyCoolingDown($apiKey)) {
+                Log::info("[GeminiService] Skipping key #{$keyIndex} (cooling down).");
+                continue;
+            }
 
-            return $data['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
-        } catch (\Throwable $e) {
-            Log::error('[GeminiService] API call failed', ['error' => $e->getMessage()]);
+            for ($attempt = 1; $attempt <= self::MAX_RETRIES_PER_KEY; $attempt++) {
+                try {
+                    $url = "{$this->baseUrl}/models/{$this->model}:generateContent?key={$apiKey}";
+                    $res  = $this->http->post($url, ['json' => $body]);
+                    $data = json_decode($res->getBody()->getContents(), true);
 
-            return '{}';
+                    Log::debug("[GeminiService] Success with key #{$keyIndex}, attempt {$attempt}.");
+                    return $data['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
+
+                } catch (ClientException $e) {
+                    $statusCode = $e->getResponse()->getStatusCode();
+                    $body429    = json_decode($e->getResponse()->getBody()->getContents(), true);
+                    $errMsg     = $body429['error']['message'] ?? $e->getMessage();
+
+                    if ($statusCode === 429) {
+                        // Detect if this is a daily QUOTA exhaustion (not just rate limit)
+                        $isQuotaExhausted = str_contains($errMsg, 'quota') || str_contains($errMsg, 'billing');
+
+                        if ($isQuotaExhausted) {
+                            // Cool down this key for 1 hour, rotate to next immediately
+                            $this->coolDownKey($apiKey, 3600);
+                            Log::warning("[GeminiService] Key #{$keyIndex} daily quota exhausted. Rotating to next key.");
+                            break; // Break retry loop, try next key
+                        }
+
+                        // Rate limit (per-minute): backoff and retry same key
+                        $delay = self::BACKOFF_BASE_SECONDS ** $attempt;
+                        Log::warning("[GeminiService] Key #{$keyIndex} rate-limited (429). Retrying in {$delay}s (attempt {$attempt}).");
+                        sleep($delay);
+                        continue;
+                    }
+
+                    // Other client error (400, 403, etc.) — don't retry
+                    Log::error("[GeminiService] Client error {$statusCode} with key #{$keyIndex}.", ['error' => $errMsg]);
+                    break;
+
+                } catch (\Throwable $e) {
+                    // Network error, timeout, etc. — log and try next key
+                    Log::error('[GeminiService] API call failed.', ['error' => $e->getMessage()]);
+                    break;
+                }
+            }
         }
+
+        Log::error('[GeminiService] All API keys exhausted or failed. Returning empty response.');
+        return '{}';
+    }
+
+    /**
+     * Resolve the pool of API keys from config.
+     * Supports GEMINI_API_KEYS (comma-separated) or falls back to GEMINI_API_KEY.
+     */
+    private function resolveApiKeys(): array
+    {
+        $multiKeys = config('sisir.gemini.api_keys', '');
+
+        if (!empty($multiKeys)) {
+            $keys = array_filter(array_map('trim', explode(',', $multiKeys)));
+            if (count($keys) > 0) {
+                return array_values($keys);
+            }
+        }
+
+        // Fallback to single key
+        $single = config('sisir.gemini.api_key', '');
+        return $single ? [$single] : [];
+    }
+
+    /**
+     * Mark an API key as cooling down (quota exhausted) for a given TTL.
+     */
+    private function coolDownKey(string $apiKey, int $ttlSeconds): void
+    {
+        $cacheKey = 'gemini_key_cooldown_' . md5($apiKey);
+        Cache::put($cacheKey, true, now()->addSeconds($ttlSeconds));
+    }
+
+    /**
+     * Check if an API key is currently cooling down.
+     */
+    private function isKeyCoolingDown(string $apiKey): bool
+    {
+        $cacheKey = 'gemini_key_cooldown_' . md5($apiKey);
+        return Cache::has($cacheKey);
     }
 
     private function parseJsonResponse(string $raw): ?array
@@ -347,71 +335,4 @@ PROMPT;
 
         return is_array($decoded) ? $decoded : null;
     }
-
-    private function buildIntentSystemPrompt(array $context): string
-    {
-        $contextJson = json_encode($context);
-
-        return <<<PROMPT
-        You are SISIR, a smart WhatsApp booking assistant for a barber shop.
-        
-        Analyze the customer's message and extract the intent and entities.
-        
-        Conversation context (previous turns): {$contextJson}
-        
-        Respond ONLY with valid JSON in this exact schema:
-        {
-          "intent": "<one of: booking|reschedule|cancel|status_check|waitlist|faq|ambiguous>",
-          "entities": {
-            "date": "<ISO date YYYY-MM-DD or null>",
-            "time": "<HH:MM or natural expression or null>",
-            "service": "<service name or null>",
-            "barber": "<barber name or null>"
-          },
-          "confidence": <0.0-1.0>,
-          "options": ["manual_pick", "talk_to_admin"]
-        }
-        
-        Rules:
-        - If confidence < 0.6, set intent to "ambiguous"
-        - For time, preserve natural expressions (e.g., "abis dzuhur") as-is; the system will parse them
-        - If the message is a greeting or small talk, set intent to "faq"
-        - Never invent entities that are not mentioned
-        PROMPT;
-    }
-
-    private function buildTimeParsingSystemPrompt(string $referenceDate): string
-    {
-        return <<<PROMPT
-        You are a time-parsing engine for an Indonesian barber shop booking system.
-        Today's date is: {$referenceDate} (Asia/Jakarta timezone).
-        
-        Convert the given natural-language time expression to an exact datetime.
-        
-        Common Indonesian time references:
-        - "subuh" = 04:30
-        - "pagi" = 08:00-11:00 (use 09:00 if unspecified)
-        - "siang" = 12:00-14:00 (use 12:00)
-        - "abis dzuhur" / "habis dzuhur" = 13:00
-        - "ashar" / "asar" = 15:30
-        - "sore" = 16:00
-        - "abis ashar" = 16:00
-        - "maghrib" = 18:00
-        - "malam" = 19:00-21:00 (use 19:00)
-        - "besok" = tomorrow
-        - "lusa" = day after tomorrow
-        - "Senin/Selasa/Rabu/Kamis/Jumat/Sabtu/Minggu" = next occurrence of that weekday
-        
-        Respond ONLY with valid JSON:
-        {
-          "datetime": "<ISO 8601 datetime, e.g. 2026-06-17T13:00:00+07:00>",
-          "confidence": <0.0-1.0>,
-          "interpreted_as": "<human-readable explanation>"
-        }
-        
-        If you cannot determine a valid datetime, set datetime to null.
-        PROMPT;
-    }
-
-
 }
