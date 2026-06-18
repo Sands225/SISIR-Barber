@@ -114,13 +114,7 @@
 <!-- App Header -->
 <div class="app-header">
   <a href="{{ route('sisir.splash') }}" class="brand">
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <circle cx="7" cy="7" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <circle cx="7" cy="21" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <line x1="7" y1="12" x2="24" y2="4" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <line x1="7" y1="16" x2="24" y2="24" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="18" cy="14" r="2" fill="#1e7c3a"/>
-    </svg>
+    <img src="{{ asset('ico-sisir.ico') }}" width="28" height="28" alt="SISIR" style="border-radius:6px;" />
     <span class="brand-name">SISIR</span>
   </a>
   <div class="avatar-btn"><div class="avatar-fallback">{{ auth()->check() ? strtoupper(substr(auth()->user()->name, 0, 1)) : 'A' }}</div></div>
@@ -129,72 +123,81 @@
 <!-- Scrollable content -->
 <div class="page-scroll">
   <div class="promo-scroll-content">
+    <div class="md:grid md:grid-cols-2 md:gap-8">
+      
+      <!-- Left Column: Input and Banner -->
+      <div class="flex flex-col">
+        <!-- Banner -->
+        <div class="promo-banner anim-slide delay-1">
+          <div class="promo-banner-deco"></div>
+          <div class="promo-banner-deco2"></div>
+          <div class="promo-banner-title">Ada Promo Discount untuk anda!</div>
+          <div class="promo-banner-desc">Tingkatkan kunjungan pelanggan dengan penawaran spesial.</div>
+        </div>
 
-    <!-- Banner -->
-    <div class="promo-banner anim-slide delay-1">
-      <div class="promo-banner-deco"></div>
-      <div class="promo-banner-deco2"></div>
-      <div class="promo-banner-title">Ada Promo Discount untuk anda!</div>
-      <div class="promo-banner-desc">Tingkatkan kunjungan pelanggan dengan penawaran spesial.</div>
-    </div>
+        <!-- Section title -->
+        <div class="promo-section-title anim-fade-up delay-2">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <path d="M3 11L19 3L15 19L11 13L3 11Z" stroke="#1e7c3a" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M11 13L19 3" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Kirim Promo
+        </div>
 
-    <!-- Section title -->
-    <div class="promo-section-title anim-fade-up delay-2">
-      <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-        <path d="M3 11L19 3L15 19L11 13L3 11Z" stroke="#1e7c3a" stroke-width="2" stroke-linejoin="round"/>
-        <path d="M11 13L19 3" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      Kirim Promo
-    </div>
+        <!-- Input card -->
+        <div class="input-card anim-slide delay-2">
+          <div class="input-card-label">Nilai Potongan Harga</div>
+          <div class="promo-input-wrap">
+            <div class="promo-currency">Rp</div>
+            <input
+              class="promo-amount-input"
+              id="promoAmount"
+              type="text"
+              value="5.000"
+              inputmode="numeric"
+              oninput="updatePreview(this.value)"
+            />
+          </div>
+          <div class="input-hint">Potongan ini akan dikirimkan ke database pelanggan Anda via WhatsApp.</div>
+        </div>
 
-    <!-- Input card -->
-    <div class="input-card anim-slide delay-2">
-      <div class="input-card-label">Nilai Potongan Harga</div>
-      <div class="promo-input-wrap">
-        <div class="promo-currency">Rp</div>
-        <input
-          class="promo-amount-input"
-          id="promoAmount"
-          type="text"
-          value="5.000"
-          inputmode="numeric"
-          oninput="updatePreview(this.value)"
-        />
+        <!-- Send button -->
+        <button class="btn-send-promo anim-slide delay-4 md:mt-2" id="btnSendPromo" onclick="sendPromo()">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M2 9L16 2L12 16L9 11L2 9Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          Kirim Promo Sekarang
+        </button>
       </div>
-      <div class="input-hint">Potongan ini akan dikirimkan ke database pelanggan Anda via WhatsApp.</div>
-    </div>
 
-    <!-- Preview -->
-    <div class="preview-label anim-fade-up delay-3">Pratinjau Pesan</div>
-    <div class="preview-card anim-slide delay-3">
-      <div class="preview-brand">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <circle cx="4" cy="4" r="3" fill="none" stroke="#208a40" stroke-width="1.5"/>
-          <circle cx="4" cy="12" r="3" fill="none" stroke="#208a40" stroke-width="1.5"/>
-          <line x1="4" y1="7" x2="14" y2="2" stroke="#208a40" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="4" y1="9" x2="14" y2="14" stroke="#208a40" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        SISIR BARBER
+      <!-- Right Column: WhatsApp message preview -->
+      <div class="flex flex-col pt-6 md:pt-0">
+        <!-- Preview -->
+        <div class="preview-label anim-fade-up delay-3">Pratinjau Pesan</div>
+        <div class="preview-card anim-slide delay-3 flex-1 flex flex-col justify-between">
+          <div>
+            <div class="preview-brand">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="4" cy="4" r="3" fill="none" stroke="#208a40" stroke-width="1.5"/>
+                <circle cx="4" cy="12" r="3" fill="none" stroke="#208a40" stroke-width="1.5"/>
+                <line x1="4" y1="7" x2="14" y2="2" stroke="#208a40" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="4" y1="9" x2="14" y2="14" stroke="#208a40" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              SISIR BARBER
+            </div>
+            <div class="preview-text" id="previewText">
+              Halo Sobat Sisir! 👋<br/><br/>
+              Kabar gembira! Gunakan kode promo <span class="preview-highlight">SISIRHEMAT</span>
+              untuk mendapatkan potongan sebesar:<br/><br/>
+              💰 <strong>Rp <span id="previewAmount">5.000</span></strong><br/><br/>
+              Berlaku hari ini saja! Jangan sampai ketinggalan ya! ✂️<br/><br/>
+              Booking sekarang 👉 sisir.id/booking
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="preview-text" id="previewText">
-        Halo Sobat Sisir! 👋<br/><br/>
-        Kabar gembira! Gunakan kode promo <span class="preview-highlight">SISIRHEMAT</span>
-        untuk mendapatkan potongan sebesar:<br/><br/>
-        💰 <strong>Rp <span id="previewAmount">5.000</span></strong><br/><br/>
-        Berlaku hari ini saja! Jangan sampai ketinggalan ya! ✂️<br/><br/>
-        Booking sekarang 👉 sisir.id/booking
-      </div>
+
     </div>
-
-    <!-- Send button -->
-    <button class="btn-send-promo anim-slide delay-4" id="btnSendPromo" onclick="sendPromo()">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <path d="M2 9L16 2L12 16L9 11L2 9Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
-      </svg>
-      Kirim Promo Sekarang
-    </button>
-
-    <!-- End of content -->
   </div>
 </div>
 

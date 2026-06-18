@@ -141,106 +141,114 @@
 </div>
 
 <div class="page-scroll">
+  <div class="lg:grid lg:grid-cols-2 lg:gap-8 lg:px-0">
 
-  <!-- 1. Customer info -->
-  <div class="form-card anim-fade-up">
-    <div class="form-card-title">Informasi Pelanggan</div>
-    <div class="form-field">
-      <label class="field-label" for="fieldName">Nama Lengkap</label>
-      <input id="fieldName" name="name" class="field-input" type="text"
-             placeholder="Masukkan nama kamu"
-             value="{{ session('customer_name', '') }}" required />
-    </div>
-    <div class="form-field">
-      <label class="field-label" for="fieldPhone">Nomor WhatsApp</label>
-      <input id="fieldPhone" name="phone" class="field-input" type="tel"
-             placeholder="08xx-xxxx-xxxx" inputmode="numeric"
-             value="{{ session('customer_phone', '') }}" required />
-    </div>
-  </div>
-
-  <!-- 2. Service -->
-  <div class="form-card anim-fade-up delay-1">
-    <div class="form-card-title">Pilih Layanan</div>
-    <div class="service-grid" id="serviceGrid">
-      @foreach($services as $svc)
-        <div class="service-card" data-id="{{ $svc->id }}" onclick="selectService(this, {{ $svc->id }})">
-          <div class="service-name">{{ $svc->name }}</div>
-          <div class="service-dur">⏱ {{ $svc->duration_minutes }} menit</div>
-          <div class="service-price">Rp {{ number_format($svc->price, 0, ',', '.') }}</div>
-          <div class="service-check">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M2 5l2.5 2.5L8 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
+    <!-- Left Column: Customer details, Service, Barber selection -->
+    <div class="flex flex-col">
+      <!-- 1. Customer info -->
+      <div class="form-card anim-fade-up md:mx-0">
+        <div class="form-card-title">Informasi Pelanggan</div>
+        <div class="form-field">
+          <label class="field-label" for="fieldName">Nama Lengkap</label>
+          <input id="fieldName" name="name" class="field-input" type="text"
+                 placeholder="Masukkan nama kamu"
+                 value="{{ session('customer_name', '') }}" required />
         </div>
-      @endforeach
-    </div>
-    <input type="hidden" id="selectedServiceId" />
-  </div>
-
-  <!-- 3. Barber -->
-  <div class="form-card anim-fade-up delay-1">
-    <div class="form-card-title">Pilih Kapster</div>
-    <div class="form-field">
-      <select id="barberSelect" class="field-input" onchange="loadSlots()">
-        <option value="">-- Pilih kapster --</option>
-        @foreach($barbers as $barber)
-          <option value="{{ $barber->id }}">{{ $barber->displayName() }}</option>
-        @endforeach
-      </select>
-    </div>
-  </div>
-
-  <!-- 4. Date & Slot -->
-  <div class="form-card anim-fade-up delay-2">
-    <div class="form-card-title">Tanggal & Waktu</div>
-    <div class="form-field">
-      <label class="field-label" for="dateInput">Tanggal</label>
-      <input id="dateInput" class="field-input" type="date"
-             min="{{ today()->toDateString() }}"
-             value="{{ today()->toDateString() }}"
-             onchange="loadSlots()" />
-    </div>
-    <div class="form-field">
-      <label class="field-label">Slot Tersedia</label>
-      <div class="slots-grid" id="slotsGrid">
-        <p style="font-size:13px;color:var(--gray-400)">Pilih kapster dan tanggal terlebih dahulu.</p>
+        <div class="form-field">
+          <label class="field-label" for="fieldPhone">Nomor WhatsApp</label>
+          <input id="fieldPhone" name="phone" class="field-input" type="tel"
+                 placeholder="08xx-xxxx-xxxx" inputmode="numeric"
+                 value="{{ session('customer_phone', '') }}" required />
+        </div>
       </div>
-      <input type="hidden" id="selectedSlot" />
+
+      <!-- 2. Service -->
+      <div class="form-card anim-fade-up delay-1 md:mx-0">
+        <div class="form-card-title">Pilih Layanan</div>
+        <div class="service-grid" id="serviceGrid">
+          @foreach($services as $svc)
+            <div class="service-card" data-id="{{ $svc->id }}" onclick="selectService(this, {{ $svc->id }})">
+              <div class="service-name">{{ $svc->name }}</div>
+              <div class="service-dur">⏱ {{ $svc->duration_minutes }} menit</div>
+              <div class="service-price">Rp {{ number_format($svc->price, 0, ',', '.') }}</div>
+              <div class="service-check">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 5l2.5 2.5L8 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          @endforeach
+        </div>
+        <input type="hidden" id="selectedServiceId" />
+      </div>
+
+      <!-- 3. Barber -->
+      <div class="form-card anim-fade-up delay-1 md:mx-0">
+        <div class="form-card-title">Pilih Kapster</div>
+        <div class="form-field">
+          <select id="barberSelect" class="field-input" onchange="loadSlots()">
+            <option value="">-- Pilih kapster --</option>
+            @foreach($barbers as $barber)
+              <option value="{{ $barber->id }}">{{ $barber->displayName() }}</option>
+            @endforeach
+          </select>
+        </div>
+      </div>
     </div>
+
+    <!-- Right Column: Date, slots, notes, submit and QR result -->
+    <div class="flex flex-col">
+      <!-- 4. Date & Slot -->
+      <div class="form-card anim-fade-up delay-2 md:mx-0">
+        <div class="form-card-title">Tanggal & Waktu</div>
+        <div class="form-field">
+          <label class="field-label" for="dateInput">Tanggal</label>
+          <input id="dateInput" class="field-input" type="date"
+                 min="{{ today()->toDateString() }}"
+                 value="{{ today()->toDateString() }}"
+                 onchange="loadSlots()" />
+        </div>
+        <div class="form-field">
+          <label class="field-label">Slot Tersedia</label>
+          <div class="slots-grid" id="slotsGrid">
+            <p style="font-size:13px;color:var(--gray-400)">Pilih kapster dan tanggal terlebih dahulu.</p>
+          </div>
+          <input type="hidden" id="selectedSlot" />
+        </div>
+      </div>
+
+      <!-- 5. Notes -->
+      <div class="form-card anim-fade-up delay-2 !mx-0">
+        <div class="form-card-title">Catatan (opsional)</div>
+        <textarea id="notesInput" class="field-input" style="height:80px;padding-top:12px;resize:none"
+                  placeholder="Permintaan khusus, contoh: model spesifik..."></textarea>
+      </div>
+
+      <!-- Submit -->
+      <button class="btn-book anim-fade-up delay-3 md:mx-0 md:w-full" id="btnBook" onclick="submitBooking()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="2" y="4" width="16" height="14" rx="3" stroke="white" stroke-width="2"/>
+          <line x1="2" y1="9" x2="18" y2="9" stroke="white" stroke-width="2"/>
+          <line x1="7" y1="1" x2="7" y2="7" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          <line x1="13" y1="1" x2="13" y2="7" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Buat Booking & Bayar DP
+      </button>
+
+      <!-- QR Result Card -->
+      <div class="qr-result md:mx-0" id="qrResult">
+        <h3>✅ Booking Dibuat!</h3>
+        <p id="qrSubtitle">Scan QRIS di bawah untuk membayar DP.</p>
+        <div id="qrDisplay"></div>
+        <a href="{{ route('sisir.dashboard') }}" style="
+          display:inline-block;margin-top:16px;padding:12px 24px;
+          background:var(--green-600);color:white;border-radius:var(--radius-md);
+          font-weight:700;font-size:14px;text-decoration:none;
+        ">Lihat Dashboard →</a>
+      </div>
+    </div>
+
   </div>
-
-  <!-- 5. Notes -->
-  <div class="form-card anim-fade-up delay-2">
-    <div class="form-card-title">Catatan (opsional)</div>
-    <textarea id="notesInput" class="field-input" style="height:80px;padding-top:12px;resize:none"
-              placeholder="Permintaan khusus, contoh: model spesifik..."></textarea>
-  </div>
-
-  <!-- Submit -->
-  <button class="btn-book anim-fade-up delay-3" id="btnBook" onclick="submitBooking()">
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <rect x="2" y="4" width="16" height="14" rx="3" stroke="white" stroke-width="2"/>
-      <line x1="2" y1="9" x2="18" y2="9" stroke="white" stroke-width="2"/>
-      <line x1="7" y1="1" x2="7" y2="7" stroke="white" stroke-width="2" stroke-linecap="round"/>
-      <line x1="13" y1="1" x2="13" y2="7" stroke="white" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    Buat Booking & Bayar DP
-  </button>
-
-  <!-- QR Result Card -->
-  <div class="qr-result" id="qrResult">
-    <h3>✅ Booking Dibuat!</h3>
-    <p id="qrSubtitle">Scan QRIS di bawah untuk membayar DP.</p>
-    <div id="qrDisplay"></div>
-    <a href="{{ route('sisir.dashboard') }}" style="
-      display:inline-block;margin-top:16px;padding:12px 24px;
-      background:var(--green-600);color:white;border-radius:var(--radius-md);
-      font-weight:700;font-size:14px;text-decoration:none;
-    ">Lihat Dashboard →</a>
-  </div>
-
 </div>
 @endsection
 
