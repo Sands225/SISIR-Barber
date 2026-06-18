@@ -232,12 +232,14 @@ class ConversationService
         $service   = Service::find($context['service_id']);
         $barber    = Barber::with('user')->find($context['barber_id']);
 
+        $dpAmount = (int) ceil($service->price * 0.5); // 50% dari harga layanan
+
         $summary = "📋 *Ringkasan Booking*\n\n"
             . "👤 Nama: {$customer->name}\n"
             . "🪒 Layanan: {$service->name}\n"
             . "💈 Kapster: {$barber->displayName()}\n"
             . "📅 Jadwal: {$scheduledAt->locale('id')->isoFormat('dddd, D MMMM YYYY [pukul] HH:mm')}\n"
-            . "💳 DP: Rp " . number_format(config('sisir.dp_amount'), 0, ',', '.') . " (non-refundable)\n\n"
+            . "💳 DP: Rp " . number_format($dpAmount, 0, ',', '.') . " (50% dari Rp " . number_format($service->price, 0, ',', '.') . ", non-refundable)\n\n"
             . "Konfirmasi booking?";
 
         $this->whatsapp->sendInteractiveButtons(
@@ -270,13 +272,16 @@ class ConversationService
         $context      = $customer->conversation_context ?? [];
         $scheduledAt  = Carbon::parse($context['scheduled_at']);
 
+        $service = Service::find($context['service_id']);
+        $dpAmount = $service ? (int) ceil($service->price * 0.5) : (int) config('sisir.dp_amount');
+
         $booking = Booking::create([
             'customer_id'  => $customer->id,
             'barber_id'    => $context['barber_id'],
             'service_id'   => $context['service_id'],
             'scheduled_at' => $scheduledAt,
             'status'       => BookingStatus::TEMP_LOCKED->value,
-            'dp_amount'    => config('sisir.dp_amount'),
+            'dp_amount'    => $dpAmount,
         ]);
 
         // Lock the slot

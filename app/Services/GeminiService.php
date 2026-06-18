@@ -132,7 +132,7 @@ class GeminiService
                 $servicesText .= "{$num}. {$s->name} (Rp " . number_format($s->price, 0, ',', '.') . ", durasi {$s->duration_minutes} menit)\n";
             }
         } catch (\Throwable $e) {
-            $servicesText = "1. Basic Haircut (Rp 25.000, durasi 30 menit)\n2. Haircut & Wash (Rp 40.000, durasi 45 menit)\n3. Full Treatment (Rp 100.000, durasi 90 menit)\n4. Pompadour Styling (Rp 60.000, durasi 60 menit)\n- Creambath & Treatment: Rp 75.000 (60 menit)\n- Cukur Jenggot: Rp 20.000 (20 menit)";
+            $servicesText = "1. Cukur Anak-anak (Rp 25.000, durasi 30 menit)\n2. Cukur Dewasa (Rp 35.000, durasi 30 menit)\n3. Cukur Gundul (Rp 20.000, durasi 20 menit)\n4. Potong Jenggot & Kumis (Rp 15.000, durasi 20 menit)";
         }
 
         try {

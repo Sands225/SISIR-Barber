@@ -134,9 +134,8 @@ class BookingController extends Controller
 
         $scheduledAt = \Illuminate\Support\Carbon::parse($request->scheduled_at);
         
-        $service = Service::findOrFail($request->service_id);
-        // $dpAmount = (int) ceil($service->price / 2);
-        $dpAmount = 1000;
+        $service  = Service::findOrFail($request->service_id);
+        $dpAmount = (int) ceil($service->price * 0.5); // 50% dari harga layanan
 
         // Create booking in TEMP_LOCKED state
         try {
