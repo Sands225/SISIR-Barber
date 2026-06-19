@@ -220,8 +220,10 @@ class ConversationService
         }
 
         // ── Find available barber ────────────────────────────────────────────
+        // Iterasi semua barber yang aktif, pilih barber pertama yang slotnya kosong.
+        // Dengan 2+ barber, sistem otomatis support 2+ booking paralel di waktu yang sama.
         $barbers         = Barber::where('is_active', true)->get();
-        $availableBarber = $barbers->first();
+        $availableBarber = null;
 
         foreach ($barbers as $barber) {
             $barberSlots = $this->capacity->getAvailableSlots($barber->id, $scheduledAt);
@@ -233,7 +235,7 @@ class ConversationService
         }
 
         if (!$availableBarber) {
-            $this->whatsapp->sendText($customer->wa_id, 'Maaf Kak, tidak ada kapster yang tersedia di waktu itu 😔 Boleh coba waktu lain?');
+            $this->whatsapp->sendText($customer->wa_id, 'Maaf Kak, semua kapster sudah penuh di waktu itu 😔 Boleh coba waktu lain?');
             return;
         }
 
