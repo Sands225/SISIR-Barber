@@ -220,6 +220,46 @@ class WhatsAppService
         return $sent;
     }
 
+    /**
+     * Send a schedule grid image captured via Puppeteer.
+     */
+    public function sendScheduleImage(string $waId, string $date, string $caption = ''): bool
+    {
+        $url = "{$this->nodeUrl}/send-schedule-image";
+        $appUrl = config('app.url');
+        if ($appUrl === 'http://localhost') {
+            $appUrl = 'http://127.0.0.1:8000';
+        }
+        $htmlUrl = "{$appUrl}/booking/schedule-image-html?date={$date}";
+
+        try {
+            $res = $this->http->post($url, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'to'      => $waId,
+                    'date'    => $date,
+                    'htmlUrl' => $htmlUrl,
+                    'message' => $caption,
+                ],
+            ]);
+
+            $status = $res->getStatusCode();
+            $ok     = $status >= 200 && $status < 300;
+
+            if (! $ok) {
+                Log::error('[WhatsAppService] Send schedule image failed', ['status' => $status, 'wa_id' => $waId]);
+            }
+
+            return $ok;
+        } catch (\Throwable $e) {
+            Log::error('[WhatsAppService] HTTP error connecting to Node.js server (Schedule Image)', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
     // ── Private ──────────────────────────────────────────────────────────────
 
     private function send(string $waId, string $message): bool

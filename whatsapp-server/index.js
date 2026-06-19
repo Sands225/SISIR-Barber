@@ -141,6 +141,46 @@ app.post('/send-media', async (req, res) => {
     }
 });
 
+// Express Endpoint for Laravel to capture and send a schedule grid image
+app.post('/send-schedule-image', async (req, res) => {
+    const { to, date, htmlUrl, message } = req.body;
+
+    if (!to || !date || !htmlUrl) {
+        return res.status(400).json({ success: false, error: 'Missing required fields: to, date, or htmlUrl.' });
+    }
+
+    try {
+        let chatId = to;
+        if (!to.includes('@')) {
+            chatId = `${to}@c.us`;
+            const contactId = await client.getNumberId(to);
+            if (contactId) {
+                chatId = contactId._serialized;
+            }
+        }
+
+        if (!client.pupBrowser) {
+            throw new Error('WhatsApp Web Puppeteer browser is not initialized.');
+        }
+
+        console.log(`[OUTGOING SCHEDULE IMAGE] Opening page for ${htmlUrl}`);
+        const page = await client.pupBrowser.newPage();
+        await page.setViewport({ width: 480, height: 800, deviceScaleFactor: 2 });
+        await page.goto(htmlUrl, { waitUntil: 'networkidle0', timeout: 15000 });
+        const screenshotBuf = await page.screenshot({ type: 'png', fullPage: true });
+        await page.close();
+
+        const media = new MessageMedia('image/png', screenshotBuf.toString('base64'), `schedule_${date}.png`);
+        const response = await client.sendMessage(chatId, media, { caption: message || `Berikut adalah jadwal ketersediaan slot untuk tanggal ${date} 🪒` });
+
+        console.log(`[OUTGOING SCHEDULE IMAGE] Sent to ${chatId} for date ${date}`);
+        return res.status(200).json({ success: true, response });
+    } catch (err) {
+        console.error(`[SEND SCHEDULE IMAGE ERROR] Failed to send schedule image to ${to}: ${err.message}`);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`🚀 Node.js WhatsApp Server running on port ${PORT}`);
 });

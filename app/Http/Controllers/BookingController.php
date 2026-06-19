@@ -185,8 +185,9 @@ class BookingController extends Controller
 
         $scheduledAt = \Illuminate\Support\Carbon::parse($request->scheduled_at);
         
-        $service  = Service::findOrFail($request->service_id);
-        $dpAmount = (int) ceil($service->price * 0.5); // 50% dari harga layanan
+        $service   = Service::findOrFail($request->service_id);
+        $dpPercent = (int) \App\Models\Setting::get('dp_amount', 50);
+        $dpAmount  = (int) ceil($service->price * ($dpPercent / 100));
 
         // Create booking in TEMP_LOCKED state
         try {
@@ -236,5 +237,43 @@ class BookingController extends Controller
                 'warning'     => 'Gagal membuat QR pembayaran. Silakan hubungi admin.',
             ]);
         }
+    }
+
+    /**
+     * GET /booking/schedule-image-html
+     * Render the schedule grid for a specific date as HTML.
+     */
+    public function scheduleImageHtml(Request $request): View
+    {
+        $dateStr = $request->get('date', now('Asia/Jakarta')->toDateString());
+        $date    = \Illuminate\Support\Carbon::parse($dateStr, 'Asia/Jakarta');
+
+        $barbers = Barber::where('is_active', true)->with('user')->get();
+        $scheduleData = [];
+
+        foreach ($barbers as $barber) {
+            $slots = $this->capacity->getAvailableSlots($barber->id, $date);
+            $scheduleData[$barber->displayName()] = $slots;
+        }
+
+        $timeKeys = collect();
+        foreach ($scheduleData as $slots) {
+            foreach ($slots as $slot) {
+                $timeKeys->push($slot['time']);
+            }
+        }
+        $timeKeys = $timeKeys->unique()->sort()->values();
+
+        $shopName = \App\Models\Setting::get('shop_name', 'SISIR Barber');
+        $shopAddress = \App\Models\Setting::get('shop_address', 'Jl. Contoh No.1, Depok');
+        $formattedDate = $date->locale('id')->isoFormat('dddd, D MMMM YYYY');
+
+        return view('sisir.schedule-image', compact(
+            'scheduleData',
+            'timeKeys',
+            'formattedDate',
+            'shopName',
+            'shopAddress'
+        ));
     }
 }

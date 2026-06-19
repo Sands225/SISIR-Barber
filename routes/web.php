@@ -18,6 +18,9 @@ Route::get('/login', fn () => view('sisir.login'))->name('sisir.login');
 Route::post('/login',  [AuthController::class, 'login'])->name('sisir.login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('sisir.logout');
 
+// Public route to render schedule grid for screenshotting
+Route::get('/booking/schedule-image-html', [BookingController::class, 'scheduleImageHtml'])->name('sisir.booking.schedule-image-html');
+
 // ─── SISIR Authenticated UI ───────────────────────────────────────────────────
 Route::middleware('sisir.auth')->group(function () {
     // Dashboard

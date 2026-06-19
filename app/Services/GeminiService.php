@@ -70,6 +70,11 @@ class GeminiService
         $today    = now('Asia/Jakarta')->toDateString();
         $tomorrow = now('Asia/Jakarta')->addDay()->toDateString();
 
+        $shopName    = \App\Models\Setting::get('shop_name', 'SISIR Barber');
+        $shopAddress = \App\Models\Setting::get('shop_address', 'Jl. Contoh No.1, Depok');
+        $openingTime = \App\Models\Setting::get('opening_time', '09:00');
+        $closingTime = \App\Models\Setting::get('closing_time', '21:00');
+
         try {
             $services     = \App\Models\Service::where('is_active', true)->get();
             $servicesText = $services->map(
@@ -84,15 +89,26 @@ class GeminiService
 
         try {
             $faqs     = \App\Models\Faq::where('is_active', true)->get();
+            // Filter out operational hours FAQ to avoid conflicting with the dynamic settings
+            $faqs = $faqs->reject(function ($faq) {
+                return preg_match('/(operasional|jam buka|jam tutup|buka jam)/i', $faq->question);
+            });
             $faqsText = $faqs->map(fn($f) => "T: {$f->question}\nJ: {$f->answer}")->join("\n\n");
         } catch (\Throwable $e) {
-            $faqsText = "T: Jam buka?\nJ: Setiap hari 08:00 - 20:00 WIB.";
+            $faqsText = "T: Jam buka?\nJ: Setiap hari Senin sampai Sabtu dari jam {$openingTime} sampai {$closingTime} WIB. Hari Minggu libur.\n\n"
+                . "T: Alamat?\nJ: {$shopAddress}";
         }
 
         return <<<PROMPT
 # ROLE
-Kamu adalah SISIR, AI Customer Service Virtual untuk "SISIR Barber".
+Kamu adalah SISIR, AI Customer Service Virtual untuk "{$shopName}".
 Tugas kamu: menjawab pertanyaan seputar layanan barbershop, mengumpulkan data reservasi, dan mengarahkan ke pembayaran.
+
+---
+# INFORMASI TOKO
+- Nama Barbershop: {$shopName}
+- Alamat Toko: {$shopAddress}
+- Jam Operasional: Buka setiap hari Senin sampai Sabtu dari jam {$openingTime} sampai {$closingTime} WIB. Hari Minggu libur.
 
 ---
 # WAKTU REFERENSI

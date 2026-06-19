@@ -94,7 +94,9 @@ class ConversationService
             $serviceList = "- Cukur Anak-anak\n- Cukur Dewasa\n- Cukur Gundul\n- Potong Jenggot & Kumis";
         }
 
-        $greeting = "Halo Kak! 👋 Terima kasih sudah menghubungi SISIR Barber 🪒\n\n"
+        $shopName = \App\Models\Setting::get('shop_name', 'SISIR Barber');
+
+        $greeting = "Halo Kak! 👋 Terima kasih sudah menghubungi {$shopName} 🪒\n\n"
             . "Ingin reservasi cukur? Berikut adalah layanan kami:\n"
             . $serviceList . "\n\n"
             . "Kakak tinggal kirim *Nama*, *Layanan*, serta *Hari & Jam* kedatangan Kakak. Nanti aku bantu reservasi ya! ✂️";
@@ -173,6 +175,12 @@ class ConversationService
             $this->whatsapp->sendText($customer->wa_id, $response);
         }
 
+        $isAskingForSchedule = (bool) preg_match('/(jam.*kosong|slot.*kosong|jadwal|ketersediaan|buka.*jam|jam.*buka)/i', $messageText);
+        if ($isAskingForSchedule) {
+            $date = $slots['day'] ?? now('Asia/Jakarta')->toDateString();
+            \App\Jobs\SendScheduleImageJob::dispatch($customer->wa_id, $date);
+        }
+
         // Append to history and persist
         $history[] = ['role' => 'user', 'message' => $messageText];
         $history[] = ['role' => 'bot',  'message' => $response];
@@ -239,7 +247,8 @@ class ConversationService
             return;
         }
 
-        $dpAmount = (int) ceil($service->price * 0.5);
+        $dpPercent = (int) \App\Models\Setting::get('dp_amount', 50);
+        $dpAmount  = (int) ceil($service->price * ($dpPercent / 100));
 
         // ── Create booking record ────────────────────────────────────────────
         $booking = Booking::create([
