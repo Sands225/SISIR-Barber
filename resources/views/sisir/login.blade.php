@@ -7,6 +7,35 @@
 <style>
   body, .sisir-shell { background: var(--green-50); }
 
+  /* ── Desktop Card Layout ── */
+  .login-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100%;
+  }
+  @media (min-width: 768px) {
+    .login-container {
+      justify-content: center;
+      align-items: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, var(--green-700) 0%, var(--green-900) 100%);
+    }
+    .login-card {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 440px;
+      overflow: hidden;
+      padding: 24px 10px;
+    }
+    .help-fab {
+      right: 32px !important;
+      bottom: 32px !important;
+    }
+  }
+
   /* ── Header ── */
   .login-header {
     padding: 16px 20px 8px;
@@ -148,124 +177,116 @@
 @endsection
 
 @section('content')
-<div class="login-header">
-  <a href="{{ route('sisir.splash') }}" class="brand" style="text-decoration:none">
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <circle cx="7" cy="7" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <circle cx="7" cy="21" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <line x1="7" y1="12" x2="24" y2="4" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <line x1="7" y1="16" x2="24" y2="24" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="18" cy="14" r="2" fill="#1e7c3a"/>
-    </svg>
-    <span class="brand-name">SISIR</span>
-  </a>
-</div>
+<div class="login-container">
+  <div class="login-card">
+    <div class="login-header">
+      <a href="{{ route('sisir.splash') }}" class="brand" style="text-decoration:none">
+        <img src="{{ asset('ico-sisir.ico') }}" width="28" height="28" alt="SISIR" style="border-radius:6px;" />
+        <span class="brand-name">SISIR</span>
+      </a>
+    </div>
 
-<form action="{{ route('sisir.login.post') }}" method="POST">
-@csrf
-<div class="login-body">
-  <!-- Scissors icon circle -->
-  <div class="login-icon-circle anim-fade-up">
-    <svg width="38" height="38" viewBox="0 0 38 38" fill="none">
-      <circle cx="9.5" cy="9.5" r="7" fill="none" stroke="white" stroke-width="2.5"/>
-      <circle cx="9.5" cy="28.5" r="7" fill="none" stroke="white" stroke-width="2.5"/>
-      <line x1="9.5" y1="16.5" x2="9.5" y2="21.5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="13.5" y1="16.5" x2="32" y2="31" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="13.5" y1="21.5" x2="32" y2="7" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-    </svg>
-  </div>
+    <form action="{{ route('sisir.login.post') }}" method="POST">
+    @csrf
+    <div class="login-body">
+      <!-- Scissors icon circle -->
+      <div class="login-icon-circle anim-fade-up">
+        <img src="{{ asset('ico-white-sisir.ico') }}" width="38" height="38" alt="SISIR" style="border-radius:8px;" />
+      </div>
 
-  <h1 class="login-title anim-fade-up delay-1">Selamat Datang<br/>Kembali!</h1>
-  <p class="login-subtitle anim-fade-up delay-1">Reclaim Your Time, Recover Your Revenue</p>
+      <h1 class="login-title anim-fade-up delay-1">Selamat Datang<br/>Kembali!</h1>
+      <p class="login-subtitle anim-fade-up delay-1">Reclaim Your Time, Recover Your Revenue</p>
 
-  {{-- Validation or session flash --}}
-  @if(session('info'))
-    <div class="anim-fade-up" style="
-      background: var(--green-100); color: var(--green-700);
-      border-radius: var(--radius-md); padding: 10px 16px;
-      font-size: 13px; font-weight: 600; width: 100%; margin-bottom: 12px;
-    ">{{ session('info') }}</div>
-  @endif
+      {{-- Validation or session flash --}}
+      @if(session('info'))
+        <div class="anim-fade-up" style="
+          background: var(--green-100); color: var(--green-700);
+          border-radius: var(--radius-md); padding: 10px 16px;
+          font-size: 13px; font-weight: 600; width: 100%; margin-bottom: 12px;
+        ">{{ session('info') }}</div>
+      @endif
 
-  @if($errors->any())
-    <div class="anim-fade-up" style="
-      background: var(--red-100); color: var(--red-500);
-      border-radius: var(--radius-md); padding: 10px 16px;
-      font-size: 13px; font-weight: 600; width: 100%; margin-bottom: 12px;
-    ">{{ $errors->first('email') ?? $errors->first() }}</div>
-  @endif
+      @if($errors->any())
+        <div class="anim-fade-up" style="
+          background: var(--red-100); color: var(--red-500);
+          border-radius: var(--radius-md); padding: 10px 16px;
+          font-size: 13px; font-weight: 600; width: 100%; margin-bottom: 12px;
+        ">{{ $errors->first('email') ?? $errors->first() }}</div>
+      @endif
 
-  {{-- Email input --}}
-  <div class="form-group anim-fade-up delay-2">
-    <label class="form-label" for="emailInput">Email</label>
-    <div class="phone-input-wrap" style="padding-left:14px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
-        <path d="M4 7.00005L10.2 11.65C11.2667 12.45 12.7333 12.45 13.8 11.65L20 7" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <rect x="3" y="5" width="18" height="14" rx="2" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      <input
-        class="phone-input"
-        id="emailInput"
-        name="email"
-        type="email"
-        placeholder="admin@sisir.barber"
-        autocomplete="email"
-        value="{{ old('email') }}"
-        required
-      />
+      {{-- Email input --}}
+      <div class="form-group anim-fade-up delay-2">
+        <label class="form-label" for="emailInput">Email</label>
+        <div class="phone-input-wrap" style="padding-left:14px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+            <path d="M4 7.00005L10.2 11.65C11.2667 12.45 12.7333 12.45 13.8 11.65L20 7" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="3" y="5" width="18" height="14" rx="2" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input
+            class="phone-input"
+            id="emailInput"
+            name="email"
+            type="email"
+            placeholder="admin@sisir.barber"
+            autocomplete="email"
+            value="{{ old('email') }}"
+            required
+          />
+        </div>
+      </div>
+
+      {{-- Password input --}}
+      <div class="form-group anim-fade-up delay-2">
+        <label class="form-label" for="passwordInput">Password</label>
+        <div class="phone-input-wrap" style="padding-left:14px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+            <rect x="5" y="11" width="14" height="10" rx="2" stroke="#9ca3af" stroke-width="2"/>
+            <path d="M8 11V7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7V11" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input
+            class="phone-input"
+            id="passwordInput"
+            name="password"
+            type="password"
+            placeholder="Masukkan password"
+            required
+          />
+        </div>
+      </div>
+
+      {{-- Lanjutkan button — submits the form --}}
+      <button type="submit" class="btn-primary anim-fade-up delay-3" id="btnLanjutkan">
+        <span id="btnText">Lanjutkan</span>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M3 9h12M10 4l5 5-5 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      {{-- Divider --}}
+      <div class="divider anim-fade-up delay-3">
+        <div class="divider-line"></div>
+        <span class="divider-text">Atau masuk dengan</span>
+        <div class="divider-line"></div>
+      </div>
+
+      {{-- Google --}}
+      <button type="button" class="btn-google anim-fade-up delay-4" onclick="showToast('Login dengan Google segera hadir!')">
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71 0-.593.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        Google
+      </button>
+    </div>
+    </form>
+
+    <!-- Footer -->
+    <div class="login-footer anim-fade-up delay-4">
+      Belum punya akun? <a href="#" onclick="showToast('Fitur pendaftaran segera hadir!')">Daftar Sekarang</a>
     </div>
   </div>
-
-  {{-- Password input --}}
-  <div class="form-group anim-fade-up delay-2">
-    <label class="form-label" for="passwordInput">Password</label>
-    <div class="phone-input-wrap" style="padding-left:14px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
-        <rect x="5" y="11" width="14" height="10" rx="2" stroke="#9ca3af" stroke-width="2"/>
-        <path d="M8 11V7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7V11" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      <input
-        class="phone-input"
-        id="passwordInput"
-        name="password"
-        type="password"
-        placeholder="Masukkan password"
-        required
-      />
-    </div>
-  </div>
-
-  {{-- Lanjutkan button — submits the form --}}
-  <button type="submit" class="btn-primary anim-fade-up delay-3" id="btnLanjutkan">
-    <span id="btnText">Lanjutkan</span>
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M3 9h12M10 4l5 5-5 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  </button>
-
-  {{-- Divider --}}
-  <div class="divider anim-fade-up delay-3">
-    <div class="divider-line"></div>
-    <span class="divider-text">Atau masuk dengan</span>
-    <div class="divider-line"></div>
-  </div>
-
-  {{-- Google --}}
-  <button type="button" class="btn-google anim-fade-up delay-4" onclick="showToast('Login dengan Google segera hadir!')">
-    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-      <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
-      <path d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71 0-.593.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-    </svg>
-    Google
-  </button>
-</form>
-
-
-<!-- Footer -->
-<div class="login-footer anim-fade-up delay-4">
-  Belum punya akun? <a href="#" onclick="showToast('Fitur pendaftaran segera hadir!')">Daftar Sekarang</a>
 </div>
 
 <!-- Help FAB -->

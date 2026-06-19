@@ -116,6 +116,12 @@
   }
   .new-booking-fab:hover { transform: scale(1.08); box-shadow: 0 6px 22px rgba(20,82,40,.55); }
   @media (max-width: 430px) { .new-booking-fab { right: 20px; } }
+  @media (min-width: 768px) {
+    .new-booking-fab {
+      right: 48px;
+      bottom: 48px;
+    }
+  }
 
   /* No results */
   .no-results {
@@ -130,46 +136,43 @@
 <!-- App Header -->
 <div class="app-header">
   <a href="{{ route('sisir.splash') }}" class="brand">
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <circle cx="7" cy="7" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <circle cx="7" cy="21" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <line x1="7" y1="12" x2="24" y2="4" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <line x1="7" y1="16" x2="24" y2="24" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="18" cy="14" r="2" fill="#1e7c3a"/>
-    </svg>
+    <img src="{{ asset('ico-sisir.ico') }}" width="28" height="28" alt="SISIR" style="border-radius:6px;" />
     <span class="brand-name">SISIR</span>
   </a>
   <div class="avatar-btn"><div class="avatar-fallback">{{ auth()->check() ? strtoupper(substr(auth()->user()->name, 0, 1)) : 'A' }}</div></div>
 </div>
 
 <!-- Page title -->
-<div class="bl-page-header anim-fade-up">
+<div class="bl-page-header anim-fade-up md:px-0">
   <h1 class="bl-title">Daftar Booking</h1>
   <p class="bl-subtitle">{{ $bookings->total() }} total booking ditemukan.</p>
 </div>
 
-<!-- Search (client-side) -->
-<div class="search-wrap anim-fade-up delay-1">
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-    <circle cx="8" cy="8" r="6" stroke="#9ca3af" stroke-width="2"/>
-    <line x1="13" y1="13" x2="17" y2="17" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-  </svg>
-  <input class="search-input" id="searchInput" type="search" placeholder="Cari nama pelanggan..." autocomplete="off" oninput="applySearch()" />
-</div>
+<!-- Search & Filters Wrapper -->
+<div class="md:flex md:flex-row md:items-center md:justify-between md:gap-4 md:px-0 md:mb-6">
+  <!-- Search (client-side) -->
+  <div class="search-wrap anim-fade-up delay-1 md:mx-0 md:mb-0 flex-1 md:max-w-xs">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="8" cy="8" r="6" stroke="#9ca3af" stroke-width="2"/>
+      <line x1="13" y1="13" x2="17" y2="17" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <input class="search-input" id="searchInput" type="search" placeholder="Cari nama pelanggan..." autocomplete="off" oninput="applySearch()" />
+  </div>
 
-<!-- Filter tabs — server-side via GET param -->
-<div class="filter-tabs anim-fade-up delay-1">
-  @foreach(['Semua','Menunggu','Sudah DP','Selesai','Batal'] as $tab)
-    <a href="{{ route('sisir.booking', ['status' => $tab]) }}"
-       class="filter-tab {{ $filterStatus === $tab ? 'active' : '' }}">
-      {{ $tab }}
-    </a>
-  @endforeach
+  <!-- Filter tabs — server-side via GET param -->
+  <div class="filter-tabs anim-fade-up delay-1 md:px-0 md:pb-0 md:mb-0">
+    @foreach(['Semua','Menunggu','Sudah DP','Selesai','Batal'] as $tab)
+      <a href="{{ route('sisir.booking', ['status' => $tab]) }}"
+         class="filter-tab {{ $filterStatus === $tab ? 'active' : '' }}">
+        {{ $tab }}
+      </a>
+    @endforeach
+  </div>
 </div>
 
 <!-- Booking list -->
 <div class="page-scroll">
-  <div class="bli-list" id="bookingList">
+  <div class="bli-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:px-0" id="bookingList">
 
     @forelse ($bookings as $booking)
       @php
@@ -178,7 +181,7 @@
         $isNegative = in_array($booking->status->value, ['CANCELLED_BY_SYSTEM','NO_SHOW']);
         $isDone     = $booking->status->value === 'COMPLETED';
       @endphp
-      <div class="booking-list-item anim-slide delay-{{ min($loop->iteration, 4) }}"
+      <div class="booking-list-item anim-slide delay-{{ min($loop->iteration, 4) }} md:mx-0 md:mb-0"
            data-name="{{ strtolower($booking->customer->name ?? '') }}">
         <div class="bli-top">
           <div class="bli-avatar" style="{{ $isNegative ? 'background:linear-gradient(135deg,#fca5a5,#ef4444)' : '' }}">{{ $initials }}</div>
@@ -291,6 +294,16 @@
   .modal-overlay.open { display:flex; }
   .modal-sheet { background:var(--white);border-radius:28px 28px 0 0;padding:28px 24px 40px;width:100%;max-width:430px;animation:slideUp .32s cubic-bezier(.34,1.56,.64,1) both; }
   @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  @media (min-width: 768px) {
+    .modal-overlay { align-items: center; }
+    .modal-sheet { border-radius: var(--radius-lg); padding: 32px; max-width: 480px; animation: zoomIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+    .modal-handle { display: none; }
+    .new-booking-fab {
+      right: 32px !important;
+      bottom: 32px !important;
+    }
+  }
+  @keyframes zoomIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
   .modal-handle { width:40px;height:4px;background:var(--gray-200);border-radius:99px;margin:0 auto 20px; }
   .modal-title { font-size:18px;font-weight:800;color:var(--gray-900);margin-bottom:16px; }
   .modal-row { display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-100);font-size:14px; }

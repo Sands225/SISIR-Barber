@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  @vite(['resources/css/app.css', 'resources/js/app.js'])
   <style>
     /* ──────────────────────────────
        DESIGN TOKENS
@@ -84,6 +85,18 @@
       position: relative;
       overflow: hidden;
     }
+    @media (min-width: 768px) {
+      .sisir-shell {
+        max-width: 100%;
+        min-height: auto;
+        margin: 0;
+        overflow: visible;
+        background: transparent;
+      }
+      .app-header, .bottom-nav {
+        display: none !important;
+      }
+    }
 
     /* ──────────────────────────────
        APP HEADER (shared)
@@ -143,8 +156,13 @@
       background: var(--white);
       border-top: 1px solid var(--gray-200);
       flex-shrink: 0;
-      position: sticky;
+      position: fixed;
       bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 430px;
+      z-index: 50;
     }
     .nav-item {
       display: flex;
@@ -174,8 +192,14 @@
       overflow-x: hidden;
       scrollbar-width: none;
       -webkit-overflow-scrolling: touch;
+      padding-bottom: 96px;
     }
     .page-scroll::-webkit-scrollbar { display: none; }
+    @media (min-width: 768px) {
+      .page-scroll {
+        padding-bottom: 24px;
+      }
+    }
 
     /* ──────────────────────────────
        ANIMATIONS
@@ -240,9 +264,103 @@
   @yield('head')
 </head>
 <body>
-<div class="sisir-shell">
-  @yield('content')
+<div class="min-h-screen bg-[var(--green-bg)] md:flex md:flex-row">
+  <!-- Desktop & Tablet Sidebar -->
+  @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login']))
+  <div id="sidebar-backdrop" class="fixed inset-0 bg-black/40 z-40 hidden transition-opacity duration-300 opacity-0 lg:hidden" onclick="toggleSidebar()"></div>
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-[var(--gray-200)] h-screen flex flex-col transition-transform duration-300 ease-in-out -translate-x-full lg:translate-x-0 lg:static lg:z-0 lg:flex-shrink-0">
+    <!-- Centered Sidebar Brand Header -->
+    <div class="px-6 h-20 flex items-center justify-center border-b border-[var(--gray-100)] flex-shrink-0 relative">
+      <a href="{{ route('sisir.splash') }}" class="brand">
+        <img src="{{ asset('ico-sisir.ico') }}" width="28" height="28" alt="SISIR Logo" style="border-radius:6px;" />
+        <span class="brand-name">SISIR</span>
+      </a>
+      <button onclick="toggleSidebar()" class="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-[var(--gray-400)] hover:bg-[var(--gray-100)] hover:text-[var(--gray-700)] focus:outline-none" aria-label="Close Menu">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Navigation Menu with spacing and premium gap -->
+    <nav class="flex-1 p-6 flex flex-col gap-3">
+      <a href="{{ route('sisir.dashboard') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.dashboard' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+        </svg>
+        Dashboard
+      </a>
+      <a href="{{ route('sisir.booking') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Str::startsWith(Route::currentRouteName(), 'sisir.booking') ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        Booking
+      </a>
+      <a href="{{ route('sisir.promo') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.promo' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+          <line x1="7" y1="7" x2="7.01" y2="7"/>
+        </svg>
+        Promo
+      </a>
+    </nav>
+  </aside>
+  @endif
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col min-w-0 md:h-screen md:overflow-y-auto">
+    <!-- Top Navbar — tablet & desktop -->
+    @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login']))
+    <header class="hidden md:flex items-center bg-white border-b border-[var(--gray-200)] h-20 flex-shrink-0">
+      <div class="w-full max-w-6xl mx-auto px-8 flex items-center justify-between">
+        <!-- Left: Burger Toggle Menu -->
+        <div>
+          <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-xl text-[var(--gray-600)] hover:bg-[var(--gray-50)] focus:outline-none" aria-label="Toggle Sidebar">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Right: Account Profile & Logout -->
+        @if(auth()->check())
+          <div class="flex items-center gap-6">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-[var(--green-600)] flex items-center justify-center font-bold text-white text-base">
+                {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+              </div>
+              <div class="min-w-0">
+                <div class="text-sm font-bold text-[var(--gray-900)] leading-tight">{{ auth()->user()->name }}</div>
+                <div class="text-xs text-[var(--gray-500)] leading-tight mt-0.5">{{ auth()->user()->email }}</div>
+              </div>
+            </div>
+            <div class="h-6 w-px bg-[var(--gray-200)]"></div>
+            <form method="POST" action="{{ route('sisir.logout') }}" class="m-0">
+              @csrf
+              <button type="submit" class="flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--gray-200)] text-sm font-bold text-[var(--gray-700)] hover:bg-[var(--gray-50)] transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Keluar
+              </button>
+            </form>
+          </div>
+        @endif
+      </div>
+    </header>
+    @endif
+
+    <div class="w-full @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login'])) md:max-w-6xl md:mx-auto md:px-8 md:py-6 @endif flex-grow flex flex-col">
+      <div class="sisir-shell">
+        @yield('content')
+      </div>
+    </div>
+  </main>
 </div>
+
 
 <div class="toast" id="globalToast"></div>
 
@@ -255,6 +373,30 @@
     t.classList.add('show');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (!sidebar || !backdrop) return;
+    
+    const isOpen = !sidebar.classList.contains('-translate-x-full');
+    if (isOpen) {
+      sidebar.classList.add('-translate-x-full');
+      backdrop.classList.remove('opacity-100');
+      backdrop.classList.add('opacity-0');
+      setTimeout(() => {
+        if (sidebar.classList.contains('-translate-x-full')) {
+          backdrop.classList.add('hidden');
+        }
+      }, 300);
+    } else {
+      backdrop.classList.remove('hidden');
+      backdrop.offsetHeight; // force layout reflow
+      sidebar.classList.remove('-translate-x-full');
+      backdrop.classList.remove('opacity-0');
+      backdrop.classList.add('opacity-100');
+    }
   }
 </script>
 @yield('scripts')
