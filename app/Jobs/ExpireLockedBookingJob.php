@@ -14,11 +14,14 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Dispatched at the scheduled time of the booking.
- * If booking is still BOOKED (not yet CONFIRMED), auto-cancel it.
- * Triggers SlotRecoveryBroadcastJob on cancellation.
+ * Dispatched immediately after the Midtrans QRIS is sent to the customer.
+ * Delayed by slot_lock_ttl seconds (default: 10 minutes).
+ *
+ * If the booking is still TEMP_LOCKED when this job runs, it means
+ * Midtrans never sent a successful payment webhook — so we cancel
+ * the booking, release the slot, and notify the customer.
  */
-class AutoCancelUnconfirmedJob implements ShouldQueue
+class ExpireLockedBookingJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -33,13 +36,13 @@ class AutoCancelUnconfirmedJob implements ShouldQueue
         $booking = Booking::with(['customer', 'barber', 'service'])->find($this->bookingId);
 
         if (! $booking) {
-            Log::warning('[AutoCancelUnconfirmedJob] Booking not found', ['id' => $this->bookingId]);
+            Log::warning('[ExpireLockedBookingJob] Booking not found', ['id' => $this->bookingId]);
             return;
         }
 
-        // Only cancel if still in BOOKED state (customer did not confirm arrival)
-        if ($booking->status !== BookingStatus::BOOKED) {
-            Log::info('[AutoCancelUnconfirmedJob] No action needed', [
+        // If payment was already confirmed (status moved past TEMP_LOCKED), do nothing.
+        if ($booking->status !== BookingStatus::TEMP_LOCKED) {
+            Log::info('[ExpireLockedBookingJob] Booking already processed, skipping.', [
                 'booking_id' => $this->bookingId,
                 'status'     => $booking->status->value,
             ]);
@@ -49,29 +52,23 @@ class AutoCancelUnconfirmedJob implements ShouldQueue
         // Transition to cancelled
         $booking->transitionTo(
             BookingStatus::CANCELLED_BY_SYSTEM,
-            'Tidak ada konfirmasi kedatangan hingga waktu jadwal.'
+            'Waktu pembayaran DP (10 menit) habis tanpa konfirmasi dari Midtrans.'
         );
 
-        // Release the slot
+        // Release the capacity slot
         $capacity->releaseSlot($booking->id, $booking->barber_id, $booking->scheduled_at);
 
-        // Notify customer
-        $whatsapp->sendText(
-            $booking->customer->wa_id,
-            "❌ *Booking Dibatalkan Otomatis*\n\n"
-            . "Halo {$booking->customer->name}, booking kamu pada {$booking->scheduledAtFormatted()} "
-            . "dibatalkan karena tidak ada konfirmasi kehadiran hingga waktu jadwal.\n\n"
-            . "Jika ingin booking ulang, balas dengan \"booking\"."
-        );
+        // Notify the customer via WhatsApp
+        $whatsapp->sendPaymentExpiredNotification($booking);
 
-        // Trigger Slot Recovery broadcast
+        // Trigger slot recovery broadcast so waitlist customers can take the slot
         SlotRecoveryBroadcastJob::dispatch(
             $booking->scheduled_at->toIso8601String(),
-            15, // 15% flash discount
+            10,
             $booking->service_id
         )->onQueue('broadcasts');
 
-        Log::info('[AutoCancelUnconfirmedJob] Booking auto-cancelled and slot recovery triggered', [
+        Log::info('[ExpireLockedBookingJob] Booking expired and slot released.', [
             'booking_id' => $this->bookingId,
         ]);
     }

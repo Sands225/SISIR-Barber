@@ -14,8 +14,9 @@ use Illuminate\Support\Facades\Log;
 /**
  * Dispatched with delays for:
  *   - H-1 (day before): delay = scheduled_at - 24h
- *   - 2h before:        delay = scheduled_at - 2h
- *   - 30m reconfirm:    delay = scheduled_at - 30m
+ *   - H-1h (1 hour before): delay = scheduled_at - 1h
+ *   - H-30m reconfirm:  delay = scheduled_at - 30m
+ *   - H-15m reconfirm:  delay = scheduled_at - 15m
  */
 class SendReminderJob implements ShouldQueue
 {
@@ -26,7 +27,7 @@ class SendReminderJob implements ShouldQueue
 
     public function __construct(
         public readonly int    $bookingId,
-        public readonly string $reminderType, // 'day_before' | 'two_hours' | 'reconfirm'
+        public readonly string $reminderType, // 'day_before' | 'one_hour' | 'reconfirm_thirty' | 'reconfirm_fifteen'
     ) {}
 
     public function handle(WhatsAppService $whatsapp): void
@@ -47,11 +48,21 @@ class SendReminderJob implements ShouldQueue
             return;
         }
 
+        // Skip reconfirmation requests if booking has already been confirmed
+        if ($booking->status === \App\Enums\BookingStatus::CONFIRMED &&
+            in_array($this->reminderType, ['reconfirm_thirty', 'reconfirm_fifteen'], true)) {
+            Log::info('[SendReminderJob] Booking is already confirmed, skipping reconfirmation request', [
+                'id' => $this->bookingId,
+            ]);
+            return;
+        }
+
         match ($this->reminderType) {
-            'day_before' => $whatsapp->sendDayBeforeReminder($booking),
-            'two_hours'  => $whatsapp->sendTwoHoursReminder($booking),
-            'reconfirm'  => $whatsapp->sendReconfirmationRequest($booking),
-            default      => Log::warning('[SendReminderJob] Unknown reminder type', ['type' => $this->reminderType]),
+            'day_before'        => $whatsapp->sendDayBeforeReminder($booking),
+            'one_hour'          => $whatsapp->sendOneHourReminder($booking),
+            'reconfirm_thirty'  => $whatsapp->sendReconfirmationRequest($booking, 30),
+            'reconfirm_fifteen' => $whatsapp->sendReconfirmationRequest($booking, 15),
+            default             => Log::warning('[SendReminderJob] Unknown reminder type', ['type' => $this->reminderType]),
         };
 
         Log::info('[SendReminderJob] Reminder sent', [
@@ -61,14 +72,14 @@ class SendReminderJob implements ShouldQueue
     }
 
     /**
-     * Dispatch all 3 reminders for a booking.
+     * Dispatch all scheduled reminders for a booking.
      * Called after successful Midtrans payment (BOOKED status).
      */
     public static function dispatchAll(Booking $booking): void
     {
         $scheduledAt = $booking->scheduled_at;
 
-        // H-1 reminder
+        // H-1 hari reminder
         $dayBeforeDelay = $scheduledAt->copy()->subDay()->diffInSeconds(now());
         if ($dayBeforeDelay > 0) {
             static::dispatch($booking->id, 'day_before')
@@ -76,19 +87,27 @@ class SendReminderJob implements ShouldQueue
                 ->onQueue('reminders');
         }
 
-        // 2 hours before
-        $twoHourDelay = $scheduledAt->copy()->subHours(2)->diffInSeconds(now());
-        if ($twoHourDelay > 0) {
-            static::dispatch($booking->id, 'two_hours')
-                ->delay(now()->addSeconds($twoHourDelay))
+        // H-1 jam reminder
+        $oneHourDelay = $scheduledAt->copy()->subHour()->diffInSeconds(now());
+        if ($oneHourDelay > 0) {
+            static::dispatch($booking->id, 'one_hour')
+                ->delay(now()->addSeconds($oneHourDelay))
                 ->onQueue('reminders');
         }
 
-        // 30-min reconfirmation
-        $reconfirmDelay = $scheduledAt->copy()->subMinutes(30)->diffInSeconds(now());
-        if ($reconfirmDelay > 0) {
-            static::dispatch($booking->id, 'reconfirm')
-                ->delay(now()->addSeconds($reconfirmDelay))
+        // H-30 menit konfirmasi kedatangan
+        $reconfirmThirtyDelay = $scheduledAt->copy()->subMinutes(30)->diffInSeconds(now());
+        if ($reconfirmThirtyDelay > 0) {
+            static::dispatch($booking->id, 'reconfirm_thirty')
+                ->delay(now()->addSeconds($reconfirmThirtyDelay))
+                ->onQueue('reminders');
+        }
+
+        // H-15 menit konfirmasi kedatangan
+        $reconfirmFifteenDelay = $scheduledAt->copy()->subMinutes(15)->diffInSeconds(now());
+        if ($reconfirmFifteenDelay > 0) {
+            static::dispatch($booking->id, 'reconfirm_fifteen')
+                ->delay(now()->addSeconds($reconfirmFifteenDelay))
                 ->onQueue('reminders');
         }
     }

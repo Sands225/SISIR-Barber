@@ -91,13 +91,38 @@ class WhatsAppService
     {
         $booking->loadMissing(['customer', 'barber.user', 'service']);
 
+        $sisaBayar = $booking->service->price - $booking->dp_amount;
+
         $message = "✅ *Booking Dikonfirmasi!*\n\n"
+            . "🔖 *Kode Booking:* #{$booking->id}\n"
             . "🪒 *Layanan:* {$booking->service->name}\n"
             . "💈 *Kapster:* {$booking->barber->displayName()}\n"
+            . "🗓️ *Jadwal:* {$booking->scheduledAtFormatted()}\n\n"
+            . "💰 *Rincian Pembayaran:*\n"
+            . "   ├ Harga Layanan : Rp " . number_format($booking->service->price, 0, ',', '.') . "\n"
+            . "   ├ DP Dibayar    : Rp " . number_format($booking->dp_amount, 0, ',', '.') . " ✅\n"
+            . "   └ *Sisa Bayar  : Rp " . number_format($sisaBayar, 0, ',', '.') . "* (bayar di tempat)\n\n"
+            . "⚠️ Harap datang tepat waktu. Kami akan mengirim pengingat 1 jam, 30 menit & 15 menit sebelum jadwal.\n"
+            . "Sampai jumpa di SISIR Barber! 🪒";
+
+        return $this->sendText($booking->customer->wa_id, $message);
+    }
+
+    /**
+     * Notify customer that their payment window has expired (10-minute QRIS timeout).
+     * Booking has been cancelled and the slot released.
+     */
+    public function sendPaymentExpiredNotification(Booking $booking): bool
+    {
+        $booking->loadMissing(['customer', 'service']);
+
+        $message = "❌ *Pembayaran Kadaluarsa*\n\n"
+            . "Halo Kak *{$booking->customer->name}*, batas waktu pembayaran DP untuk reservasi berikut telah habis (10 menit):\n\n"
+            . "💈 *Layanan:* {$booking->service->name}\n"
             . "🗓️ *Jadwal:* {$booking->scheduledAtFormatted()}\n"
-            . "💳 *DP:* Rp " . number_format($booking->dp_amount, 0, ',', '.') . " (Lunas)\n"
-            . "🔖 *Kode Booking:* #{$booking->id}\n\n"
-            . "⚠️ Harap datang tepat waktu. Kami akan mengirim pengingat 2 jam & 30 menit sebelum jadwal.";
+            . "💳 *DP:* Rp " . number_format($booking->dp_amount, 0, ',', '.') . "\n\n"
+            . "Reservasi Kakak telah *dibatalkan otomatis* oleh sistem.\n\n"
+            . "Silakan kirim pesan baru jika ingin membuat reservasi ulang ya Kak! 👋";
 
         return $this->sendText($booking->customer->wa_id, $message);
     }
@@ -119,30 +144,30 @@ class WhatsAppService
     }
 
     /**
-     * Send 2-hour before reminder.
+     * Send 1-hour before reminder.
      */
-    public function sendTwoHoursReminder(Booking $booking): bool
+    public function sendOneHourReminder(Booking $booking): bool
     {
         $booking->loadMissing(['customer', 'barber.user', 'service']);
 
-        $message = "⏰ *2 Jam Lagi!*\n\n"
-            . "Halo {$booking->customer->name}, jadwalmu mulai dalam 2 jam:\n\n"
-            . "💈 *{$booking->service->name}* jam {$booking->scheduled_at->format('H:i')}\n\n"
-            . "Pastikan kamu sudah siap ya! 🪒";
+        $message = "⏰ *1 Jam Lagi!*\n\n"
+            . "Halo Kak {$booking->customer->name}, jadwalmu mulai dalam 1 jam:\n\n"
+            . "💈 *{$booking->service->name}* bersama {$booking->barber->displayName()} pada pukul {$booking->scheduled_at->format('H:i')}\n\n"
+            . "Pastikan kamu sudah bersiap-siap menuju lokasi ya! 🪒";
 
         return $this->sendText($booking->customer->wa_id, $message);
     }
 
     /**
-     * Send 30-minute reconfirmation request.
+     * Send reconfirmation request.
      */
-    public function sendReconfirmationRequest(Booking $booking): bool
+    public function sendReconfirmationRequest(Booking $booking, int $minutes = 30): bool
     {
         $booking->loadMissing(['customer']);
 
-        $body = "⏰ *30 Menit Lagi!*\n\n"
-            . "Halo {$booking->customer->name}, jadwalmu 30 menit lagi. Apakah kamu konfirmasi kehadiran?\n\n"
-            . "_(Jika tidak ada respons, booking akan dibatalkan otomatis)_";
+        $body = "⏰ *{$minutes} Menit Lagi!*\n\n"
+            . "Halo {$booking->customer->name}, jadwalmu {$minutes} menit lagi. Apakah kamu konfirmasi kehadiran untuk datang ke lokasi?\n\n"
+            . "_(Jika tidak ada respons hingga waktu jadwal, booking akan dibatalkan otomatis)_";
 
         return $this->sendInteractiveButtons(
             $booking->customer->wa_id,

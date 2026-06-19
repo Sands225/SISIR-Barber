@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\BookingStatus;
+use App\Jobs\ExpireLockedBookingJob;
 use App\Models\Barber;
 use App\Models\Booking;
 use App\Models\Customer;
@@ -259,36 +260,77 @@ class ConversationService
             return;
         }
 
-        // ── Generate Midtrans payment link and send confirmation ─────────────
+        // ── Generate Midtrans QRIS and send payment request ──────────────────
         $dayFormatted  = $scheduledAt->locale('id')->isoFormat('dddd, D MMMM YYYY');
         $timeFormatted = $scheduledAt->format('H:i');
+        $ttlMinutes    = (int) ceil(config('sisir.slot_lock_ttl', 600) / 60);
 
+        // ── Step 1: Create Midtrans QRIS charge ──────────────────────────────
         try {
             $this->midtrans->createDPCharge($booking);
-            $qrUrl = $booking->midtrans_qr_code_url;
-
-            $message = "Reservasi atas nama Kak *{$customer->name}* untuk layanan *{$service->name}* "
-                . "pada hari *{$dayFormatted}*, jam *{$timeFormatted}* sudah aku catat ya! ✂️\n\n"
-                . "Untuk menyelesaikan reservasi, silakan *scan QRIS* pada gambar ini untuk pembayaran DP sebesar "
-                . "*Rp " . number_format($dpAmount, 0, ',', '.') . "*.\n\n"
-                . "Ditunggu kedatangannya di SISIR Barber! 👋";
-
-            if ($qrUrl) {
-                $this->whatsapp->sendMedia($customer->wa_id, $qrUrl, $message);
-            } else {
-                $this->whatsapp->sendText($customer->wa_id, $message);
-            }
         } catch (\Throwable $e) {
-            Log::error('[ConversationService] Midtrans charge failed', ['error' => $e->getMessage()]);
+            Log::error('[ConversationService] Midtrans charge creation failed', ['error' => $e->getMessage()]);
 
-            // Still confirm the booking even if payment link fails
+            // Booking slot is locked but payment link could not be generated.
+            // Notify customer to contact admin, do NOT imply booking is confirmed.
             $this->whatsapp->sendText(
                 $customer->wa_id,
-                "Reservasi atas nama Kak *{$customer->name}* untuk layanan *{$service->name}* "
-                . "pada hari *{$dayFormatted}*, jam *{$timeFormatted}* sudah aku catat ya! ✂️\n\n"
-                . "Ada kendala teknis untuk link pembayaran. Mohon hubungi admin kami untuk melanjutkan pembayaran ya Kak 🙏\n\n"
-                . "Ditunggu kedatangannya! 👋"
+                "⚠️ Maaf Kak, ada kendala teknis saat membuat link pembayaran.\n\n"
+                . "Reservasi untuk layanan *{$service->name}* pada *{$dayFormatted}* jam *{$timeFormatted}* "
+                . "sudah tercatat namun *belum terkonfirmasi*.\n\n"
+                . "Mohon hubungi admin kami langsung untuk menyelesaikan pembayaran DP "
+                . "sebesar *Rp " . number_format($dpAmount, 0, ',', '.') . "* ya Kak 🙏"
             );
+            $customer->resetConversation();
+            return;
+        }
+
+        $qrUrl = $booking->midtrans_qr_code_url;
+
+        // ── Step 2: Send QRIS to customer ─────────────────────────────────────
+        // IMPORTANT: This message must NOT imply the booking is confirmed.
+        // The actual booking confirmation (with booking code) is only sent by
+        // SendBookingTicketJob AFTER Midtrans confirms payment via webhook.
+        $paymentMessage = "🧾 *Permintaan Pembayaran DP*\n\n"
+            . "Halo Kak *{$customer->name}*! Reservasi berikut sedang menunggu pembayaran:\n\n"
+            . "💈 *Layanan:* {$service->name}\n"
+            . "🗓️ *Jadwal:* {$dayFormatted}, pukul {$timeFormatted}\n"
+            . "💳 *DP:* Rp " . number_format($dpAmount, 0, ',', '.') . "\n\n"
+            . "Silakan *scan QRIS* di bawah ini untuk menyelesaikan pembayaran.\n"
+            . "⏳ Batas waktu: *{$ttlMinutes} menit*.\n\n"
+            . "_Kode booking dan konfirmasi akan dikirim otomatis setelah pembayaran berhasil._";
+
+        if ($qrUrl) {
+            $this->whatsapp->sendMedia($customer->wa_id, $qrUrl, $paymentMessage);
+        } else {
+            $this->whatsapp->sendText($customer->wa_id, $paymentMessage);
+        }
+
+        Log::info('[ConversationService] QRIS payment request sent', [
+            'booking_id' => $booking->id,
+            'qr_url'     => $qrUrl,
+        ]);
+
+        // ── Step 3: Schedule auto-expiry job (isolated) ───────────────────────
+        // Wrapped separately so a queue connection error does NOT trigger a
+        // fallback message that falsely implies booking confirmation.
+        try {
+            $ttlSeconds = (int) config('sisir.slot_lock_ttl', 600);
+            ExpireLockedBookingJob::dispatch($booking->id)
+                ->delay(now()->addSeconds($ttlSeconds))
+                ->onQueue('reminders');
+
+            Log::info('[ConversationService] ExpireLockedBookingJob scheduled', [
+                'booking_id' => $booking->id,
+                'expires_in' => "{$ttlSeconds}s",
+            ]);
+        } catch (\Throwable $e) {
+            // Queue connection issue — log only, do NOT send any WA message.
+            // Midtrans will still expire the transaction on its own after TTL.
+            Log::error('[ConversationService] Failed to schedule ExpireLockedBookingJob', [
+                'booking_id' => $booking->id,
+                'error'      => $e->getMessage(),
+            ]);
         }
 
         $customer->resetConversation();

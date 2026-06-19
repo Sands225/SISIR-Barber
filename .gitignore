@@ -27,3 +27,4 @@ Homestead.yaml
 Thumbs.db
 /whatsapp-server/.wwebjs_auth/
 /whatsapp-server/node_modules
+/.wwebjs_auth

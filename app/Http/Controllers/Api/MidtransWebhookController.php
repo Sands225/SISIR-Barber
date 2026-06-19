@@ -95,8 +95,8 @@ class MidtransWebhookController extends Controller
         // Dispatch all 3 reminder jobs
         SendReminderJob::dispatchAll($booking);
 
-        // Dispatch auto-cancel job for 30-min window
-        $autoCancel = $booking->scheduled_at->copy()->subMinutes(30);
+        // Dispatch auto-cancel job at scheduled time (H-0)
+        $autoCancel = $booking->scheduled_at;
         if ($autoCancel->isFuture()) {
             \App\Jobs\AutoCancelUnconfirmedJob::dispatch($booking->id)
                 ->delay($autoCancel)
