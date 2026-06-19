@@ -170,18 +170,20 @@
       align-items: center;
       gap: 4px;
       cursor: pointer;
-      padding: 6px 22px;
+      padding: 6px 12px;
       border-radius: var(--radius-md);
       transition: background var(--trans);
       border: none;
       background: transparent;
       font-family: var(--font);
       text-decoration: none;
+      color: var(--gray-400);
     }
     .nav-item:active { background: var(--green-50); }
     .nav-item svg { width: 24px; height: 24px; }
-    .nav-item span { font-size: 11px; font-weight: 500; color: var(--gray-400); }
-    .nav-item.active span { color: var(--green-600); font-weight: 700; }
+    .nav-item span { font-size: 11px; font-weight: 500; color: inherit; }
+    .nav-item.active { color: var(--green-600); }
+    .nav-item.active span { font-weight: 700; }
 
     /* ──────────────────────────────
        SCROLL AREA
@@ -299,6 +301,12 @@
         </svg>
         Booking
       </a>
+      <a href="{{ route('sisir.revenue') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.revenue' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        Penghasilan
+      </a>
       <a href="{{ route('sisir.promo') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.promo' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
@@ -356,6 +364,41 @@
     <div class="w-full @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login'])) md:max-w-6xl md:mx-auto md:px-8 md:py-6 @endif flex-grow flex flex-col">
       <div class="sisir-shell">
         @yield('content')
+        @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login']))
+          <!-- Bottom Nav -->
+          <nav class="bottom-nav">
+            <a href="{{ route('sisir.dashboard') }}" class="nav-item {{ Route::currentRouteName() == 'sisir.dashboard' ? 'active' : '' }}">
+              <svg viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+                <rect x="13" y="3" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+                <rect x="3" y="13" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+                <rect x="13" y="13" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>Dashboard</span>
+            </a>
+            <a href="{{ route('sisir.booking') }}" class="nav-item {{ Str::startsWith(Route::currentRouteName(), 'sisir.booking') ? 'active' : '' }}">
+              <svg viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" stroke-width="2"/>
+                <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>
+                <line x1="8" y1="2" x2="8" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="16" y1="2" x2="16" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>Booking</span>
+            </a>
+            <a href="{{ route('sisir.revenue') }}" class="nav-item {{ Route::currentRouteName() == 'sisir.revenue' ? 'active' : '' }}">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>Penghasilan</span>
+            </a>
+            <a href="{{ route('sisir.promo') }}" class="nav-item {{ Route::currentRouteName() == 'sisir.promo' ? 'active' : '' }}">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L14.09 8.26L21 9.27L16 14.14L17.18 21L12 18.27L6.82 21L8 14.14L3 9.27L9.91 8.26L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              </svg>
+              <span>Promo</span>
+            </a>
+          </nav>
+        @endif
       </div>
     </div>
   </main>
