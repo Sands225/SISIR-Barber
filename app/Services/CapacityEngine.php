@@ -40,9 +40,20 @@ class CapacityEngine
         }
 
         $slots         = [];
-        $slotDuration  = 30; // minutes per slot
+        $slotDuration  = (int) \App\Models\Setting::get('slot_duration', 30); // minutes per slot
         $open          = Carbon::parse($date->toDateString() . ' ' . $schedule->open_time, 'Asia/Jakarta');
         $close         = Carbon::parse($date->toDateString() . ' ' . $schedule->close_time, 'Asia/Jakarta');
+        $totalChairs   = (int) \App\Models\Setting::get('chairs_count', 3);
+
+        // Get total bookings across all barbers grouped by slot time for this date
+        $allBookingsCounts = Booking::whereDate('scheduled_at', $date->toDateString())
+            ->whereNotIn('status', [
+                BookingStatus::CANCELLED_BY_SYSTEM->value,
+                BookingStatus::NO_SHOW->value,
+            ])
+            ->select(DB::raw('TIME_FORMAT(scheduled_at, "%H:%i") as time_key'), DB::raw('count(*) as count'))
+            ->groupBy('time_key')
+            ->pluck('count', 'time_key');
 
         $existingBookings = Booking::where('barber_id', $barberId)
             ->whereDate('scheduled_at', $date->toDateString())
@@ -60,10 +71,13 @@ class CapacityEngine
             $locked   = $this->isRedisLocked($barberId, $current);
             $capacity = $barber->capacity_per_slot;
 
+            $totalBookedAtSlot = $allBookingsCounts->get($timeKey, 0);
+            $chairsAvailable   = $totalBookedAtSlot < $totalChairs;
+
             $slots[] = [
                 'time'            => $timeKey,
                 'datetime'        => $current->toIso8601String(),
-                'available'       => ! $booked && ! $locked,
+                'available'       => ! $booked && ! $locked && $chairsAvailable,
                 'bookings_count'  => $booked ? 1 : 0,
                 'capacity'        => $capacity,
                 'is_locked'       => $locked,

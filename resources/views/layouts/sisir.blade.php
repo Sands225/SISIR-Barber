@@ -115,6 +115,12 @@
       gap: 8px;
       text-decoration: none;
     }
+    .brand img {
+      width: 28px !important;
+      height: 28px !important;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
     .brand-name {
       font-size: 22px;
       font-weight: 800;
@@ -261,6 +267,36 @@
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
+
+    /* Sidebar padding overrides for layout consistency */
+    #sidebar nav {
+      padding: 24px !important;
+      display: flex;
+      flex-direction: column;
+      gap: 16px !important;
+    }
+    #sidebar nav a {
+      padding: 12px 20px !important;
+      border-radius: 12px !important;
+      display: flex;
+      align-items: center;
+      gap: 16px !important;
+      text-decoration: none;
+    }
+
+    /* Layout spacing overrides for tablet/desktop */
+    @media (min-width: 768px) {
+      .topbar-inner {
+        padding-left: 32px !important;
+        padding-right: 32px !important;
+      }
+      .main-content-wrap {
+        padding-left: 32px !important;
+        padding-right: 32px !important;
+        padding-top: 24px !important;
+        padding-bottom: 24px !important;
+      }
+    }
   </style>
   @yield('extra_styles')
   @yield('head')
@@ -285,7 +321,7 @@
     </div>
 
     <!-- Navigation Menu with spacing and premium gap -->
-    <nav class="flex-1 p-6 flex flex-col gap-3">
+    <nav class="flex-1 p-6 flex flex-col gap-4">
       <a href="{{ route('sisir.dashboard') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.dashboard' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
           <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
@@ -307,12 +343,12 @@
         </svg>
         Penghasilan
       </a>
-      <a href="{{ route('sisir.promo') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.promo' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
+      <a href="{{ route('sisir.settings') }}" class="flex items-center gap-4 px-5 py-3.5 rounded-xl text-sm font-bold transition-colors {{ Route::currentRouteName() == 'sisir.settings' ? 'bg-[var(--green-50)] text-[var(--green-700)]' : 'text-[var(--gray-600)] hover:bg-[var(--gray-50)] hover:text-[var(--gray-900)]' }}">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-          <line x1="7" y1="7" x2="7.01" y2="7"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
-        Promo
+        Pengaturan
       </a>
     </nav>
   </aside>
@@ -323,7 +359,7 @@
     <!-- Top Navbar — tablet & desktop -->
     @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login']))
     <header class="hidden md:flex items-center bg-white border-b border-[var(--gray-200)] h-20 flex-shrink-0">
-      <div class="w-full max-w-6xl mx-auto px-8 flex items-center justify-between">
+      <div class="topbar-inner w-full px-8 flex items-center justify-between">
         <!-- Left: Burger Toggle Menu -->
         <div>
           <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-xl text-[var(--gray-600)] hover:bg-[var(--gray-50)] focus:outline-none" aria-label="Toggle Sidebar">
@@ -361,7 +397,7 @@
     </header>
     @endif
 
-    <div class="w-full @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login'])) md:max-w-6xl md:mx-auto md:px-8 md:py-6 @endif flex-grow flex flex-col">
+    <div class="main-content-wrap w-full @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login'])) md:px-8 md:py-6 @endif flex-grow flex flex-col">
       <div class="sisir-shell">
         @yield('content')
         @if(!in_array(Route::currentRouteName(), ['sisir.splash', 'sisir.login']))
@@ -391,11 +427,12 @@
               </svg>
               <span>Penghasilan</span>
             </a>
-            <a href="{{ route('sisir.promo') }}" class="nav-item {{ Route::currentRouteName() == 'sisir.promo' ? 'active' : '' }}">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 2L14.09 8.26L21 9.27L16 14.14L17.18 21L12 18.27L6.82 21L8 14.14L3 9.27L9.91 8.26L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <a href="{{ route('sisir.settings') }}" class="nav-item {{ Route::currentRouteName() == 'sisir.settings' ? 'active' : '' }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
-              <span>Promo</span>
+              <span>Pengaturan</span>
             </a>
           </nav>
         @endif

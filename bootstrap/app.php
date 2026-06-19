@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust all proxies for ngrok / reverse proxy support
+        $middleware->trustProxies(at: '*');
+
         // Register middleware aliases for webhook signature validation
         $middleware->alias([
             'verify.whatsapp' => VerifyWhatsAppToken::class,

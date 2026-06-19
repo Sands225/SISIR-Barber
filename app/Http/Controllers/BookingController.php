@@ -49,6 +49,17 @@ class BookingController extends Controller
             }
         }
 
+        // Date/Month/Year filters
+        if ($request->filled('day')) {
+            $query->whereDay('scheduled_at', $request->day);
+        }
+        if ($request->filled('month')) {
+            $query->whereMonth('scheduled_at', $request->month);
+        }
+        if ($request->filled('year')) {
+            $query->whereYear('scheduled_at', $request->year);
+        }
+
         $bookings = $query->paginate(20);
 
         return view('sisir.booking', compact('bookings', 'user', 'filterStatus'));
@@ -64,17 +75,57 @@ class BookingController extends Controller
 
         return response()->json([
             'id'             => $booking->id,
+            'id_formatted'   => $booking->scheduled_at->format('Y') . '-' . str_pad($booking->id, 4, '0', STR_PAD_LEFT),
             'customer_name'  => $booking->customer->name,
+            'customer_phone' => $booking->customer->phone,
             'service_name'   => $booking->service->name,
+            'service_price'  => number_format($booking->service->price, 0, ',', '.'),
             'barber_name'    => $booking->barber->displayName(),
             'scheduled_at'   => $booking->scheduledAtFormatted(),
             'status'         => $booking->status->value,
             'status_label'   => $booking->status->label(),
             'status_color'   => $booking->status->color(),
             'dp_amount'      => number_format($booking->dp_amount, 0, ',', '.'),
+            'remaining_pay'  => number_format($booking->service->price - $booking->dp_amount, 0, ',', '.'),
             'qr_code_url'    => $booking->midtrans_qr_code_url,
             'midtrans_order' => $booking->midtrans_order_id,
         ]);
+    }
+
+    /**
+     * POST /booking/{id}/transition
+     * Transition a booking to a new status via AJAX.
+     */
+    public function transition(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'status' => ['required', 'string'],
+        ]);
+
+        $booking = Booking::findOrFail($id);
+        $newStatus = BookingStatus::tryFrom($request->status);
+
+        if (!$newStatus) {
+            return response()->json(['error' => 'Status tidak valid.'], 400);
+        }
+
+        try {
+            $booking->transitionTo($newStatus);
+
+            // Release slot if the new status releases it
+            if ($newStatus->releasesSlot()) {
+                $this->capacity->releaseSlot($booking->id, $booking->barber_id, $booking->scheduled_at);
+            }
+
+            return response()->json([
+                'success'      => true,
+                'status'       => $booking->status->value,
+                'status_label' => $booking->status->label(),
+                'status_color' => $booking->status->color(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
     }
 
     /**

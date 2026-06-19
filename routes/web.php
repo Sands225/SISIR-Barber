@@ -3,7 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\PromoController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\RevenueController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,11 +31,19 @@ Route::middleware('sisir.auth')->group(function () {
     Route::get('/booking/{id}',        [BookingController::class, 'show'])->name('sisir.booking.show')
          ->where('id', '[0-9]+');
 
-    // Promo
-    Route::get('/promo',               [PromoController::class, 'index'])->name('sisir.promo');
-    Route::post('/promo/send',         [PromoController::class, 'send'])->name('sisir.promo.send');
-    Route::post('/promo/waitlist',     [PromoController::class, 'joinWaitlist'])->name('sisir.promo.waitlist');
+    // Settings
+    Route::get('/settings', [SettingsController::class, 'index'])->name('sisir.settings');
+    Route::post('/settings/operational', [SettingsController::class, 'updateOperational'])->name('sisir.settings.operational');
+    Route::post('/settings/barbers', [SettingsController::class, 'saveBarber'])->name('sisir.settings.barbers');
+    Route::post('/settings/barbers/{id}/delete', [SettingsController::class, 'deleteBarber'])->name('sisir.settings.barbers.delete');
+    Route::post('/settings/services', [SettingsController::class, 'saveService'])->name('sisir.settings.services');
+    Route::post('/settings/services/{id}/delete', [SettingsController::class, 'deleteService'])->name('sisir.settings.services.delete');
+    Route::post('/settings/promo/send', [SettingsController::class, 'sendPromo'])->name('sisir.settings.promo.send');
 
     // Revenue / Laporan Penghasilan
     Route::get('/revenue',             [RevenueController::class, 'index'])->name('sisir.revenue');
+
+    // Booking status transitions (Tandai Selesai, Batalkan)
+    Route::post('/booking/{id}/transition', [BookingController::class, 'transition'])->name('sisir.booking.transition')
+         ->where('id', '[0-9]+');
 });
