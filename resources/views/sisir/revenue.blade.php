@@ -229,13 +229,7 @@
 <!-- App Header -->
 <div class="app-header">
   <a href="{{ route('sisir.splash') }}" class="brand">
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <circle cx="7" cy="7" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <circle cx="7" cy="21" r="5" fill="none" stroke="#1e7c3a" stroke-width="2"/>
-      <line x1="7" y1="12" x2="24" y2="4" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <line x1="7" y1="16" x2="24" y2="24" stroke="#1e7c3a" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="18" cy="14" r="2" fill="#1e7c3a"/>
-    </svg>
+    <img src="{{ asset('ico-sisir.ico') }}" width="28" height="28" alt="SISIR" style="border-radius:6px;" />
     <span class="brand-name">SISIR</span>
   </a>
   <div class="avatar-btn">
@@ -448,39 +442,7 @@
   </div>
 </div>
 
-<!-- Bottom Nav -->
-<nav class="bottom-nav">
-  <a href="{{ route('sisir.dashboard') }}" class="nav-item" id="nav-home">
-    <svg viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-      <rect x="13" y="3" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-      <rect x="3" y="13" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-      <rect x="13" y="13" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-    </svg>
-    <span>Dashboard</span>
-  </a>
-  <a href="{{ route('sisir.booking') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="5" width="18" height="16" rx="3" stroke="#9ca3af" stroke-width="2"/>
-      <line x1="3" y1="10" x2="21" y2="10" stroke="#9ca3af" stroke-width="2"/>
-      <line x1="8" y1="2" x2="8" y2="8" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-      <line x1="16" y1="2" x2="16" y2="8" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <span>Booking</span>
-  </a>
-  <a href="{{ route('sisir.revenue') }}" class="nav-item active">
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#208a40" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <span style="color:var(--green-600)">Penghasilan</span>
-  </a>
-  <a href="{{ route('sisir.promo') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L14.09 8.26L21 9.27L16 14.14L17.18 21L12 18.27L6.82 21L8 14.14L3 9.27L9.91 8.26L12 2Z" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
-    </svg>
-    <span>Promo</span>
-  </a>
-</nav>
+
 @endsection
 
 @section('scripts')

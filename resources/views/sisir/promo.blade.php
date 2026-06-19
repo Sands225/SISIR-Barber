@@ -201,33 +201,7 @@
   </div>
 </div>
 
-<!-- Bottom Nav -->
-<nav class="bottom-nav">
-  <a href="{{ route('sisir.dashboard') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-      <rect x="13" y="3" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-      <rect x="3" y="13" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-      <rect x="13" y="13" width="8" height="8" rx="2" stroke="#9ca3af" stroke-width="2"/>
-    </svg>
-    <span>Dashboard</span>
-  </a>
-  <a href="{{ route('sisir.booking') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="5" width="18" height="16" rx="3" stroke="#9ca3af" stroke-width="2"/>
-      <line x1="3" y1="10" x2="21" y2="10" stroke="#9ca3af" stroke-width="2"/>
-      <line x1="8" y1="2" x2="8" y2="8" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-      <line x1="16" y1="2" x2="16" y2="8" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <span>Booking</span>
-  </a>
-  <a href="{{ route('sisir.promo') }}" class="nav-item active">
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L14.09 8.26L21 9.27L16 14.14L17.18 21L12 18.27L6.82 21L8 14.14L3 9.27L9.91 8.26L12 2Z" stroke="#208a40" stroke-width="2" stroke-linejoin="round"/>
-    </svg>
-    <span style="color:var(--green-600)">Promo</span>
-  </a>
-</nav>
+
 @endsection
 
 @section('scripts')

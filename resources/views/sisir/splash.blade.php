@@ -102,17 +102,7 @@
   <!-- Logo -->
   <div class="splash-logo-wrap">
     <div class="splash-icon-box">
-      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- S letter -->
-        <text x="10" y="56" font-family="Plus Jakarta Sans, sans-serif" font-size="58" font-weight="900" fill="#1a6b32">S</text>
-        <!-- Scissors -->
-        <g transform="translate(36,10) rotate(40)">
-          <circle cx="5" cy="5" r="5.5" fill="none" stroke="#1a6b32" stroke-width="2.5"/>
-          <circle cx="5" cy="32" r="5.5" fill="none" stroke="#1a6b32" stroke-width="2.5"/>
-          <line x1="5" y1="10.5" x2="5" y2="26.5" stroke="#1a6b32" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="9" y1="10.5" x2="18" y2="26.5" stroke="#1a6b32" stroke-width="2.5" stroke-linecap="round"/>
-        </g>
-      </svg>
+      <img src="{{ asset('ico-sisir.ico') }}" width="72" height="72" alt="SISIR Logo" style="border-radius:16px;" />
     </div>
     <div class="splash-brand-name">SISIR</div>
     <div class="splash-tagline">Reclaim Your Time, Recover Your Revenue</div>

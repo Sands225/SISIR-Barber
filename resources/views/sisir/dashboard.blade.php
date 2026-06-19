@@ -269,43 +269,7 @@
     gap: 24px;
   }
 
-  /* Antrean Card Redesign */
-  .antrean-card-premium {
-    background: linear-gradient(135deg, var(--green-50) 0%, #d4f4e0 100%);
-    border: 1px solid var(--green-200);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: relative;
-    overflow: hidden;
-    box-shadow: var(--shadow-sm);
-  }
-  .antrean-card-premium-label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--green-700);
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-bottom: 6px;
-  }
-  .antrean-card-premium-count {
-    font-size: 36px;
-    font-weight: 800;
-    color: var(--green-900);
-    line-height: 1;
-  }
-  .antrean-card-premium-subtitle {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--green-700);
-    margin-top: 4px;
-  }
-  .antrean-card-premium-illustration {
-    position: relative;
-    z-index: 2;
-  }
+
 
   /* Donut Widget */
   .donut-widget {
@@ -611,7 +575,7 @@
           </div>
         @empty
           <div style="text-align:center;padding:40px 20px;color:var(--gray-400);">
-            <svg class="mx-auto block opacity-40 mb-3" width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <svg style="margin: 0 auto 12px; display: block; opacity: 0.4;" width="48" height="48" viewBox="0 0 48 48" fill="none">
               <circle cx="24" cy="24" r="22" stroke="#9ca3af" stroke-width="2"/>
               <path d="M16 24h16M24 16v16" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
             </svg>
@@ -628,31 +592,7 @@
 
     <!-- Right Column: Premium Widgets -->
     <div class="right-widgets-container">
-      <!-- Widget 1: Antrean Hari Ini (Premium wave layout) -->
-      <div class="db-panel" style="padding:0;overflow:hidden;border:none;">
-        <div class="antrean-card-premium">
-          <div>
-            <div class="antrean-card-premium-label">Antrean Hari Ini</div>
-            <div class="antrean-card-premium-count">{{ $todayTotalBookings }}</div>
-            <div class="antrean-card-premium-subtitle">Booking Online</div>
-          </div>
-          <div class="antrean-card-premium-illustration">
-            <div class="relative w-20 h-20">
-              <svg class="w-full h-full text-[var(--green-300)]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <div class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[var(--green-600)] border-2 border-white flex items-center justify-center text-white shadow-sm">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       <!-- Widget 2: Ringkasan Status (Donut summary) -->
       <div class="db-panel">
@@ -774,36 +714,7 @@
   </div>
 </div>
 
-<!-- Mobile Bottom Nav -->
-<nav class="bottom-nav">
-  <a href="{{ route('sisir.dashboard') }}" class="nav-item active" id="nav-home">
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-    </svg>
-    <span style="color:var(--green-600)">Dashboard</span>
-  </a>
-  <a href="{{ route('sisir.booking') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="5" width="18" height="16" rx="3" stroke="#9ca3af" stroke-width="2"/>
-      <line x1="3" y1="10" x2="21" y2="10" stroke="#9ca3af" stroke-width="2"/>
-      <line x1="8" y1="2" x2="8" y2="8" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-      <line x1="16" y1="2" x2="16" y2="8" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <span>Booking</span>
-  </a>
-  <a href="{{ route('sisir.revenue') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <span>Penghasilan</span>
-  </a>
-  <a href="{{ route('sisir.promo') }}" class="nav-item">
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L14.09 8.26L21 9.27L16 14.14L17.18 21L12 18.27L6.82 21L8 14.14L3 9.27L9.91 8.26L12 2Z" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
-    </svg>
-    <span>Promo</span>
-  </a>
-</nav>
+
 
 <!-- Booking Detail Modal -->
 <div class="modal-overlay" id="detailModal" onclick="closeDetail(event)">

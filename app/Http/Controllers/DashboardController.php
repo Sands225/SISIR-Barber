@@ -19,9 +19,10 @@ class DashboardController extends Controller
     {
         $user = auth()->user();
 
-        // Today's active bookings for all customers
+        // Today's bookings with "Sudah DP" status (BOOKED or CONFIRMED)
         $todayBookings = Booking::with(['barber.user', 'service', 'customer'])
             ->whereDate('scheduled_at', today())
+            ->whereIn('status', [BookingStatus::BOOKED, BookingStatus::CONFIRMED])
             ->orderBy('scheduled_at')
             ->get();
 
