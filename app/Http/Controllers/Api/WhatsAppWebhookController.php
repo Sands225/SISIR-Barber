@@ -36,42 +36,30 @@ class WhatsAppWebhookController extends Controller
 
     /**
      * POST /api/webhook/whatsapp
-     * Receive incoming WhatsApp messages.
+     * Receive incoming WhatsApp messages from local Node.js server.
      */
     public function handle(Request $request): Response
     {
         $payload = $request->all();
 
-        Log::debug('[WhatsAppWebhook] Incoming payload', ['payload' => $payload]);
+        Log::debug('[WhatsAppWebhook] Incoming payload from Node', ['payload' => $payload]);
 
-        // Process each entry/change
-        foreach ($payload['entry'] ?? [] as $entry) {
-            foreach ($entry['changes'] ?? [] as $change) {
-                $value    = $change['value'] ?? [];
-                $messages = $value['messages'] ?? [];
+        $from = $payload['from'] ?? null;
+        $text = $payload['text'] ?? null;
+        $id   = $payload['id'] ?? null;
 
-                foreach ($messages as $message) {
-                    $this->processMessage($message, $value['contacts'] ?? []);
-                }
-            }
+        if ($from && $text && $id) {
+            $this->processMessage($from, $text, $id);
         }
 
-        // Always return 200 to Meta to prevent retries
         return response('OK', 200);
     }
 
     // ── Private ──────────────────────────────────────────────────────────────
 
-    private function processMessage(array $message, array $contacts): void
+    private function processMessage(string $waId, string $text, string $messageId): void
     {
-        $messageId = $message['id'] ?? null;
-
-        if (! $messageId) {
-            return;
-        }
-
         // ── Idempotency Guard ────────────────────────────────────────────────
-        // Prevents double-processing if Meta sends the same message twice
         $cacheKey = "wa_msg_{$messageId}";
         if (Cache::has($cacheKey)) {
             Log::info('[WhatsAppWebhook] Duplicate message, skipping', ['id' => $messageId]);
@@ -80,55 +68,42 @@ class WhatsAppWebhookController extends Controller
         Cache::put($cacheKey, true, now()->addHours(24));
         // ────────────────────────────────────────────────────────────────────
 
-        $waId = $message['from'] ?? null;
-        if (! $waId) {
-            return;
-        }
+        // If the user replied '1', we translate it to the confirm_arrival format
+        // This is a naive heuristic just for the Hackathon
+        $resolvedType = 'text';
+        $resolvedText = trim($text);
 
-        $messageType = $message['type'] ?? 'text';
+        if ($resolvedText === '1') {
+            // Find the most recent upcoming booking for this user
+            $booking = \App\Models\Booking::whereHas('customer', fn ($q) => $q->where('wa_id', $waId))
+                ->where('status', \App\Enums\BookingStatus::BOOKED)
+                ->where('scheduled_at', '>=', now())
+                ->orderBy('scheduled_at', 'asc')
+                ->first();
 
-        // Extract message content based on type
-        [$text, $resolvedType] = match ($messageType) {
-            'text'         => [$message['text']['body'] ?? '', 'text'],
-            'interactive'  => $this->parseInteractive($message),
-            'button'       => [$message['button']['payload'] ?? '', 'text'],
-            default        => ['', 'text'],
-        };
+            if ($booking) {
+                $resolvedType = 'interactive_button';
+                $resolvedText = "confirm_arrival_{$booking->id}";
+            }
+        } elseif ($resolvedText === '2') {
+            $booking = \App\Models\Booking::whereHas('customer', fn ($q) => $q->where('wa_id', $waId))
+                ->where('status', \App\Enums\BookingStatus::BOOKED)
+                ->where('scheduled_at', '>=', now())
+                ->orderBy('scheduled_at', 'asc')
+                ->first();
 
-        if (empty($text) && $resolvedType !== 'interactive_button') {
-            Log::debug('[WhatsAppWebhook] Empty message, ignoring', ['type' => $messageType]);
-            return;
+            if ($booking) {
+                $resolvedType = 'interactive_button';
+                $resolvedText = "cancel_booking_{$booking->id}";
+            }
         }
 
         Log::info('[WhatsAppWebhook] Processing message', [
             'wa_id' => $waId,
             'type'  => $resolvedType,
-            'text'  => substr($text, 0, 100),
+            'text'  => substr($resolvedText, 0, 100),
         ]);
 
-        // Dispatch to ConversationService (synchronously for now;
-        // could be moved to a ProcessIncomingMessageJob for async)
-        $this->conversation->handle($waId, $text, $resolvedType);
-    }
-
-    /**
-     * @return array{0: string, 1: string}
-     */
-    private function parseInteractive(array $message): array
-    {
-        $interactive = $message['interactive'] ?? [];
-        $type        = $interactive['type'] ?? '';
-
-        if ($type === 'button_reply') {
-            $buttonId = $interactive['button_reply']['id'] ?? '';
-            return [$buttonId, 'interactive_button'];
-        }
-
-        if ($type === 'list_reply') {
-            $itemId = $interactive['list_reply']['id'] ?? '';
-            return [$itemId, 'interactive_button'];
-        }
-
-        return ['', 'text'];
+        $this->conversation->handle($waId, $resolvedText, $resolvedType);
     }
 }

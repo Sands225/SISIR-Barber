@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Enums\BookingStatus;
-use App\Jobs\SendBookingTicketJob;
-use App\Jobs\SendReminderJob;
 use App\Models\Barber;
 use App\Models\Booking;
 use App\Models\Customer;
@@ -15,15 +13,20 @@ use Illuminate\Support\Facades\Log;
 class ConversationService
 {
     public function __construct(
-        private GeminiService  $gemini,
-        private CapacityEngine $capacity,
+        private GeminiService   $gemini,
+        private CapacityEngine  $capacity,
         private WhatsAppService $whatsapp,
         private MidtransService $midtrans,
     ) {}
 
     /**
      * Main entry point for incoming WhatsApp messages.
-     * Routes based on current conversation state and Gemini intent.
+     *
+     * Flow:
+     *  1. If paused (admin takeover) → ignore or resume after timeout
+     *  2. If interactive button → handle arrival/cancel
+     *  3. If idle OR session timed out (>10 min) → send greeting
+     *  4. Otherwise → run Gemini dialog manager
      */
     public function handle(string $waId, string $messageText, string $messageType = 'text'): void
     {
@@ -38,351 +41,268 @@ class ConversationService
             'type'  => $messageType,
         ]);
 
-        // Route interactive button responses differently
+        // ── 1. Paused / Admin takeover ───────────────────────────────────────
+        if ($customer->conversation_state === 'paused') {
+            $context     = $customer->conversation_context ?? [];
+            $pausedUntil = $context['paused_until'] ?? null;
+
+            if ($pausedUntil && Carbon::parse($pausedUntil)->isFuture()) {
+                Log::info('[ConversationService] Message ignored, customer is paused (admin takeover).');
+                return;
+            }
+
+            // Pause expired → resume
+            $customer->resetConversation();
+        }
+
+        // ── 2. Interactive button (arrival confirm / booking cancel) ─────────
         if ($messageType === 'interactive_button') {
             $this->handleButtonReply($customer, $messageText);
             return;
         }
 
-        // Route based on current conversation state
-        match ($customer->conversation_state) {
-            'idle'              => $this->handleIdle($customer, $messageText),
-            'awaiting_service'  => $this->handleServiceSelection($customer, $messageText),
-            'awaiting_barber'   => $this->handleBarberSelection($customer, $messageText),
-            'awaiting_time'     => $this->handleTimeSelection($customer, $messageText),
-            'awaiting_name'     => $this->handleNameCollection($customer, $messageText),
-            'awaiting_confirm'  => $this->handleBookingConfirmation($customer, $messageText),
-            default             => $this->handleIdle($customer, $messageText),
-        };
+        // ── 3. Session timeout (10 minutes) or fresh idle state → greeting ───
+        $isTimedOut = $customer->conversation_state !== 'idle'
+            && $customer->updated_at
+            && now()->diffInMinutes($customer->updated_at) >= 10;
+
+        if ($customer->conversation_state === 'idle' || $isTimedOut) {
+            if ($isTimedOut) {
+                Log::info('[ConversationService] Session timed out, resetting and greeting.');
+                $customer->resetConversation();
+            }
+            $this->sendGreeting($customer);
+            return;
+        }
+
+        // ── 4. Active conversation → Gemini dialog manager ───────────────────
+        $this->handleIncomingMessage($customer, $messageText);
     }
 
-    // ── State Handlers ───────────────────────────────────────────────────────
+    // ── Private Handlers ─────────────────────────────────────────────────────
 
-    private function handleIdle(Customer $customer, string $message): void
+    /**
+     * Send the standard greeting/welcome template and transition to 'collecting'.
+     */
+    private function sendGreeting(Customer $customer): void
+    {
+        try {
+            $services    = Service::where('is_active', true)->get();
+            $serviceList = $services->map(fn($s) => "- {$s->name}")->join("\n");
+        } catch (\Throwable $e) {
+            $serviceList = "- Cukur Anak-anak\n- Cukur Dewasa\n- Cukur Gundul\n- Potong Jenggot & Kumis";
+        }
+
+        $greeting = "Halo Kak! 👋 Terima kasih sudah menghubungi SISIR Barber 🪒\n\n"
+            . "Ingin reservasi cukur? Berikut adalah layanan kami:\n"
+            . $serviceList . "\n\n"
+            . "Kakak tinggal kirim *Nama*, *Layanan*, serta *Hari & Jam* kedatangan Kakak. Nanti aku bantu reservasi ya! ✂️";
+
+        $this->whatsapp->sendText($customer->wa_id, $greeting);
+
+        $customer->updateConversationState('collecting', [
+            'slots'   => $this->emptySlots($customer),
+            'history' => [],
+        ]);
+    }
+
+    /**
+     * Handle incoming text message via Gemini dialog manager.
+     * Routes based on intent returned by Gemini.
+     */
+    private function handleIncomingMessage(Customer $customer, string $messageText): void
     {
         $context = $customer->conversation_context ?? [];
-        $intent  = $this->gemini->parseIntent($message, $customer->wa_id, $context);
+        $slots   = $context['slots']   ?? $this->emptySlots($customer);
+        $history = $context['history'] ?? [];
 
-        Log::info('[ConversationService] Intent parsed', ['intent' => $intent]);
-
-        if ($this->gemini->isAmbiguous($intent)) {
-            $this->whatsapp->sendInteractiveButtons(
-                $customer->wa_id,
-                "Halo! Saya SISIR Bot 🪒\n\nMaaf, saya kurang mengerti maksudmu. Pilih salah satu:",
-                [
-                    ['id' => 'action_booking',    'title' => '📅 Booking Sekarang'],
-                    ['id' => 'action_manual',     'title' => '📋 Pilih Manual'],
-                    ['id' => 'action_admin',      'title' => '💬 Bicara Admin'],
-                ]
-            );
-            return;
+        // Keep last 10 exchanges (20 entries) to avoid token bloat
+        if (count($history) > 20) {
+            $history = array_slice($history, -20);
         }
 
-        match ($intent['intent'] ?? 'faq') {
-            'booking'       => $this->startBookingFlow($customer, $intent),
-            'reschedule'    => $this->handleReschedule($customer, $intent),
-            'cancel'        => $this->handleCancellation($customer, $intent),
-            'status_check'  => $this->handleStatusCheck($customer),
-            'waitlist'      => $this->handleWaitlistJoin($customer),
-            default         => $this->sendWelcomeMessage($customer),
-        };
-    }
+        $refDateTime = now('Asia/Jakarta')->locale('id')->isoFormat('dddd, D MMMM YYYY HH:mm:ss');
 
-    private function startBookingFlow(Customer $customer, array $intent): void
-    {
-        $services = Service::where('is_active', true)->get();
+        $result = $this->gemini->runDialogManager($messageText, $history, $slots, $refDateTime);
 
-        if ($services->isEmpty()) {
-            $this->whatsapp->sendText($customer->wa_id, 'Maaf, belum ada layanan tersedia saat ini.');
-            return;
-        }
+        $intent      = $result['intent']             ?? 'booking';
+        $slots       = $result['updated_slots']      ?? $slots;
+        $allComplete = $result['all_slots_complete'] ?? false;
+        $response    = $result['response']           ?? '';
 
-        $serviceList = $services->map(fn ($s, $i) => ($i + 1) . ". {$s->name} - {$s->formattedPrice()} ({$s->duration_minutes} menit)")->join("\n");
-
-        $this->whatsapp->sendText(
-            $customer->wa_id,
-            "Pilih layanan yang diinginkan:\n\n{$serviceList}\n\nBalas dengan nomor atau nama layanan."
-        );
-
-        $customer->updateConversationState('awaiting_service', [
-            'intent'   => $intent,
-            'services' => $services->pluck('name', 'id')->toArray(),
+        Log::info('[ConversationService] Gemini result', [
+            'intent'       => $intent,
+            'all_complete' => $allComplete,
+            'slots'        => $slots,
         ]);
-    }
 
-    private function handleServiceSelection(Customer $customer, string $message): void
-    {
-        $services = Service::where('is_active', true)->get();
-        $selected = null;
-
-        // Try numeric selection first
-        if (is_numeric(trim($message))) {
-            $index    = (int) trim($message) - 1;
-            $selected = $services->values()->get($index);
-        }
-
-        // Try name matching
-        if (! $selected) {
-            $selected = $services->first(fn ($s) => str_contains(
-                strtolower($s->name), strtolower(trim($message))
-            ));
-        }
-
-        if (! $selected) {
-            $this->whatsapp->sendText($customer->wa_id, 'Layanan tidak ditemukan. Coba lagi ya.');
-            return;
-        }
-
-        $barbers      = Barber::where('is_active', true)->with('user')->get();
-        $barberList   = $barbers->map(fn ($b, $i) => ($i + 1) . ". {$b->displayName()}")->join("\n");
-
-        $this->whatsapp->sendText(
-            $customer->wa_id,
-            "Pilih kapster:\n\n{$barberList}\n\nBalas dengan nomor atau nama kapster."
-        );
-
-        $customer->updateConversationState('awaiting_barber', [
-            'service_id' => $selected->id,
-            'service'    => $selected->name,
-        ]);
-    }
-
-    private function handleBarberSelection(Customer $customer, string $message): void
-    {
-        $barbers  = Barber::where('is_active', true)->with('user')->get();
-        $selected = null;
-
-        if (is_numeric(trim($message))) {
-            $selected = $barbers->values()->get((int) trim($message) - 1);
-        }
-
-        if (! $selected) {
-            $selected = $barbers->first(fn ($b) => str_contains(
-                strtolower($b->displayName()), strtolower(trim($message))
-            ));
-        }
-
-        if (! $selected) {
-            $this->whatsapp->sendText($customer->wa_id, 'Kapster tidak ditemukan. Coba lagi ya.');
-            return;
-        }
-
-        $this->whatsapp->sendText(
-            $customer->wa_id,
-            "Mau booking jam berapa? 🕐\n\n_(Contoh: besok jam 2 siang, abis dzuhur, Senin pagi)_"
-        );
-
-        $customer->updateConversationState('awaiting_time', [
-            'barber_id' => $selected->id,
-            'barber'    => $selected->displayName(),
-        ]);
-    }
-
-    private function handleTimeSelection(Customer $customer, string $message): void
-    {
-        $parsedTime = $this->gemini->parseTime($message);
-
-        if (! $parsedTime) {
-            $this->whatsapp->sendInteractiveButtons(
-                $customer->wa_id,
-                'Maaf, saya tidak bisa memahami waktu yang dimaksud. Mau pilih cara lain?',
-                [
-                    ['id' => 'action_manual', 'title' => '📋 Pilih Jam Manual'],
-                    ['id' => 'action_admin',  'title' => '💬 Bicara Admin'],
-                ]
-            );
-            return;
-        }
-
-        $context   = $customer->conversation_context ?? [];
-        $barberId  = $context['barber_id'];
-        $slots     = $this->capacity->getAvailableSlots($barberId, $parsedTime);
-        $available = $slots->firstWhere('time', $parsedTime->format('H:i'));
-
-        if (! $available || ! $available['available']) {
-            $nextSlots = $slots->where('available', true)->take(3);
-            $options   = $nextSlots->map(fn ($s) => "- {$s['time']}")->join("\n");
-
+        // ── Handover to admin ────────────────────────────────────────────────
+        if ($intent === 'handover') {
             $this->whatsapp->sendText(
                 $customer->wa_id,
-                "Slot jam {$parsedTime->format('H:i')} sudah terisi 😔\n\nSlot tersedia berikutnya:\n{$options}\n\nBalas dengan jam yang diinginkan."
+                "Baik Kak, mohon ditunggu sebentar ya. Chat Kakak sedang aku sambungkan ke Admin kami. 👨‍💼"
             );
-            return;
-        }
-
-        if (empty($customer->name) || $customer->name === 'Pelanggan Baru') {
-            $this->whatsapp->sendText($customer->wa_id, 'Siapa nama kamu? 😊');
-            $customer->updateConversationState('awaiting_name', [
-                'scheduled_at' => $parsedTime->toDateTimeString(),
+            $customer->updateConversationState('paused', [
+                'paused_until' => now('Asia/Jakarta')->addHours(1)->toDateTimeString(),
             ]);
             return;
         }
 
-        $this->showBookingSummary($customer, $parsedTime);
-    }
-
-    private function handleNameCollection(Customer $customer, string $message): void
-    {
-        $customer->update(['name' => trim($message)]);
-        $context      = $customer->conversation_context ?? [];
-        $scheduledAt  = Carbon::parse($context['scheduled_at']);
-        $this->showBookingSummary($customer, $scheduledAt);
-    }
-
-    private function showBookingSummary(Customer $customer, Carbon $scheduledAt): void
-    {
-        $context   = $customer->conversation_context ?? [];
-        $service   = Service::find($context['service_id']);
-        $barber    = Barber::with('user')->find($context['barber_id']);
-
-        $summary = "📋 *Ringkasan Booking*\n\n"
-            . "👤 Nama: {$customer->name}\n"
-            . "🪒 Layanan: {$service->name}\n"
-            . "💈 Kapster: {$barber->displayName()}\n"
-            . "📅 Jadwal: {$scheduledAt->locale('id')->isoFormat('dddd, D MMMM YYYY [pukul] HH:mm')}\n"
-            . "💳 DP: Rp " . number_format(config('sisir.dp_amount'), 0, ',', '.') . " (non-refundable)\n\n"
-            . "Konfirmasi booking?";
-
-        $this->whatsapp->sendInteractiveButtons(
-            $customer->wa_id,
-            $summary,
-            [
-                ['id' => 'confirm_booking', 'title' => '✅ Konfirmasi'],
-                ['id' => 'cancel_flow',     'title' => '❌ Batalkan'],
-            ]
-        );
-
-        $customer->updateConversationState('awaiting_confirm', [
-            'scheduled_at' => $scheduledAt->toDateTimeString(),
-        ]);
-    }
-
-    private function handleBookingConfirmation(Customer $customer, string $message): void
-    {
-        if (! str_contains(strtolower($message), 'ya') && ! str_contains($message, '1')) {
-            $customer->resetConversation();
-            $this->whatsapp->sendText($customer->wa_id, 'Booking dibatalkan. Ketik "booking" untuk mulai lagi.');
+        // ── All booking slots complete → create booking ──────────────────────
+        if ($intent === 'booking' && $allComplete) {
+            // Send confirmation response first, then process
+            if ($response) {
+                $this->whatsapp->sendText($customer->wa_id, $response);
+            }
+            $this->createBookingFromSlots($customer, $slots);
             return;
         }
 
-        $this->createBookingAndCharge($customer);
+        // ── API error → send fallback, don't change state ───────────────────
+        if ($intent === 'error') {
+            if ($response) {
+                $this->whatsapp->sendText($customer->wa_id, $response);
+            }
+            // Do NOT update context on error, preserve existing slots/history
+            return;
+        }
+
+        // ── Send Gemini response (faq / oot / booking collecting) ────────────
+        if ($response) {
+            $this->whatsapp->sendText($customer->wa_id, $response);
+        }
+
+        // Append to history and persist
+        $history[] = ['role' => 'user', 'message' => $messageText];
+        $history[] = ['role' => 'bot',  'message' => $response];
+
+        $customer->update([
+            'conversation_context' => [
+                'slots'   => $slots,
+                'history' => $history,
+            ],
+        ]);
     }
 
-    private function createBookingAndCharge(Customer $customer): void
+    /**
+     * Create booking when all 4 slots are complete, then generate Midtrans payment link.
+     */
+    private function createBookingFromSlots(Customer $customer, array $slots): void
     {
-        $context      = $customer->conversation_context ?? [];
-        $scheduledAt  = Carbon::parse($context['scheduled_at']);
+        // Update customer name if collected
+        if (!empty($slots['name'])) {
+            $customer->update(['name' => $slots['name']]);
+            $customer->refresh();
+        }
 
+        // ── Resolve service ──────────────────────────────────────────────────
+        $serviceName = $slots['service'] ?? '';
+        $service = Service::where('is_active', true)->where('name', $serviceName)->first()
+            ?? Service::where('is_active', true)->where('name', 'like', "%{$serviceName}%")->first()
+            ?? Service::where('is_active', true)->first();
+
+        if (!$service) {
+            $this->whatsapp->sendText($customer->wa_id, 'Maaf Kak, layanan tidak ditemukan. Bisa sebutkan ulang layanannya?');
+            return;
+        }
+
+        // ── Parse scheduled datetime ─────────────────────────────────────────
+        try {
+            $scheduledAt = Carbon::parse(($slots['day'] ?? '') . ' ' . ($slots['time'] ?? ''), 'Asia/Jakarta');
+            if (!$scheduledAt->isValid()) {
+                throw new \Exception('Invalid date');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[ConversationService] Could not parse scheduled time', ['slots' => $slots]);
+            $this->whatsapp->sendText($customer->wa_id, 'Maaf Kak, ada masalah dengan waktu yang dipilih. Bisa disebutkan ulang hari dan jamnya?');
+            return;
+        }
+
+        // ── Find available barber ────────────────────────────────────────────
+        $barbers         = Barber::where('is_active', true)->get();
+        $availableBarber = $barbers->first();
+
+        foreach ($barbers as $barber) {
+            $barberSlots = $this->capacity->getAvailableSlots($barber->id, $scheduledAt);
+            $slot        = $barberSlots->firstWhere('time', $scheduledAt->format('H:i'));
+            if ($slot && ($slot['available'] ?? false)) {
+                $availableBarber = $barber;
+                break;
+            }
+        }
+
+        if (!$availableBarber) {
+            $this->whatsapp->sendText($customer->wa_id, 'Maaf Kak, tidak ada kapster yang tersedia di waktu itu 😔 Boleh coba waktu lain?');
+            return;
+        }
+
+        $dpAmount = (int) ceil($service->price * 0.5);
+
+        // ── Create booking record ────────────────────────────────────────────
         $booking = Booking::create([
             'customer_id'  => $customer->id,
-            'barber_id'    => $context['barber_id'],
-            'service_id'   => $context['service_id'],
+            'barber_id'    => $availableBarber->id,
+            'service_id'   => $service->id,
             'scheduled_at' => $scheduledAt,
             'status'       => BookingStatus::TEMP_LOCKED->value,
-            'dp_amount'    => config('sisir.dp_amount'),
+            'dp_amount'    => $dpAmount,
         ]);
 
-        // Lock the slot
         $locked = $this->capacity->lockSlot($booking->id, $booking->barber_id, $scheduledAt);
 
-        if (! $locked) {
+        if (!$locked) {
             $booking->delete();
             $this->whatsapp->sendText(
                 $customer->wa_id,
-                'Maaf, slot tersebut baru saja diambil orang lain 😔 Silakan pilih waktu lain.'
+                'Maaf Kak, slot jam tersebut baru saja diambil orang lain 😔 Boleh pilih waktu lain?'
             );
-            $customer->updateConversationState('awaiting_time');
             return;
         }
 
-        // Generate Midtrans QRIS
+        // ── Generate Midtrans payment link and send confirmation ─────────────
+        $dayFormatted  = $scheduledAt->locale('id')->isoFormat('dddd, D MMMM YYYY');
+        $timeFormatted = $scheduledAt->format('H:i');
+
         try {
-            $charge = $this->midtrans->createDPCharge($booking);
-            $qrUrl  = $charge['actions'][0]['url'] ?? null;
+            $this->midtrans->createDPCharge($booking);
+            $qrUrl = $booking->midtrans_qr_code_url;
 
-            $message = "💳 *Bayar DP sekarang!*\n\n"
-                . "Scan QR di bawah untuk membayar DP sebesar *Rp " . number_format($booking->dp_amount, 0, ',', '.') . "*\n\n"
-                . ($qrUrl ? "🔗 Link QR: {$qrUrl}\n\n" : '')
-                . "⏰ QR berlaku 10 menit. Booking akan otomatis dibatalkan jika DP belum dibayar.";
+            $message = "Reservasi atas nama Kak *{$customer->name}* untuk layanan *{$service->name}* "
+                . "pada hari *{$dayFormatted}*, jam *{$timeFormatted}* sudah aku catat ya! ✂️\n\n"
+                . "Untuk menyelesaikan reservasi, silakan *scan QRIS* pada gambar ini untuk pembayaran DP sebesar "
+                . "*Rp " . number_format($dpAmount, 0, ',', '.') . "*.\n\n"
+                . "Ditunggu kedatangannya di SISIR Barber! 👋";
 
-            $this->whatsapp->sendText($customer->wa_id, $message);
+            if ($qrUrl) {
+                $this->whatsapp->sendMedia($customer->wa_id, $qrUrl, $message);
+            } else {
+                $this->whatsapp->sendText($customer->wa_id, $message);
+            }
         } catch (\Throwable $e) {
             Log::error('[ConversationService] Midtrans charge failed', ['error' => $e->getMessage()]);
-            $this->whatsapp->sendText($customer->wa_id, 'Ada masalah saat membuat tagihan. Coba lagi atau hubungi admin.');
+
+            // Still confirm the booking even if payment link fails
+            $this->whatsapp->sendText(
+                $customer->wa_id,
+                "Reservasi atas nama Kak *{$customer->name}* untuk layanan *{$service->name}* "
+                . "pada hari *{$dayFormatted}*, jam *{$timeFormatted}* sudah aku catat ya! ✂️\n\n"
+                . "Ada kendala teknis untuk link pembayaran. Mohon hubungi admin kami untuk melanjutkan pembayaran ya Kak 🙏\n\n"
+                . "Ditunggu kedatangannya! 👋"
+            );
         }
 
         $customer->resetConversation();
     }
 
-    private function handleStatusCheck(Customer $customer): void
-    {
-        $booking = $customer->activeBooking();
-
-        if (! $booking) {
-            $this->whatsapp->sendText($customer->wa_id, 'Kamu tidak memiliki booking aktif saat ini.');
-            return;
-        }
-
-        $booking->loadMissing(['service', 'barber.user']);
-        $this->whatsapp->sendText(
-            $customer->wa_id,
-            "📋 *Status Booking #" . $booking->id . "*\n\n"
-            . "Status: *{$booking->status->label()}*\n"
-            . "Layanan: {$booking->service->name}\n"
-            . "Kapster: {$booking->barber->displayName()}\n"
-            . "Jadwal: {$booking->scheduledAtFormatted()}"
-        );
-    }
-
-    private function handleReschedule(Customer $customer, array $intent): void
-    {
-        $this->whatsapp->sendText(
-            $customer->wa_id,
-            'Untuk reschedule, silakan hubungi admin kami langsung. Terima kasih!'
-        );
-    }
-
-    private function handleCancellation(Customer $customer, array $intent): void
-    {
-        $booking = $customer->activeBooking();
-
-        if (! $booking) {
-            $this->whatsapp->sendText($customer->wa_id, 'Tidak ada booking aktif yang bisa dibatalkan.');
-            return;
-        }
-
-        $this->whatsapp->sendInteractiveButtons(
-            $customer->wa_id,
-            "⚠️ Yakin ingin membatalkan booking #{$booking->id}?\n\nDP yang sudah dibayar tidak dapat dikembalikan.",
-            [
-                ['id' => "confirm_cancel_{$booking->id}", 'title' => '✅ Ya, Batalkan'],
-                ['id' => 'keep_booking',                  'title' => '❌ Tidak, Lanjutkan'],
-            ]
-        );
-    }
-
-    private function handleWaitlistJoin(Customer $customer): void
-    {
-        \App\Models\Waitlist::create([
-            'customer_id' => $customer->id,
-            'is_active'   => true,
-        ]);
-
-        $this->whatsapp->sendText(
-            $customer->wa_id,
-            '✅ Kamu telah ditambahkan ke daftar tunggu! Kami akan notifikasi jika ada slot tersedia.'
-        );
-    }
-
+    /**
+     * Handle interactive button replies (arrival confirmation, booking cancellation).
+     * These are triggered by reminder messages sent by the system.
+     */
     private function handleButtonReply(Customer $customer, string $buttonId): void
     {
         match (true) {
             str_starts_with($buttonId, 'confirm_arrival_') => $this->handleArrivalConfirmation($customer, $buttonId),
             str_starts_with($buttonId, 'cancel_booking_')  => $this->handleCustomerCancel($customer, $buttonId),
-            $buttonId === 'confirm_booking'                 => $this->createBookingAndCharge($customer),
-            $buttonId === 'cancel_flow'                     => $this->cancelFlow($customer),
-            $buttonId === 'action_booking'                  => $this->startBookingFlow($customer, []),
-            $buttonId === 'action_admin'                    => $this->whatsapp->sendText($customer->wa_id, 'Menghubungkan ke admin... 👋'),
             default                                         => null,
         };
     }
@@ -410,22 +330,17 @@ class ConversationService
         }
     }
 
-    private function cancelFlow(Customer $customer): void
+    /**
+     * Empty slot template for a new conversation session.
+     */
+    private function emptySlots(Customer $customer): array
     {
-        $customer->resetConversation();
-        $this->whatsapp->sendText($customer->wa_id, 'Booking dibatalkan. Ketik "booking" kapan saja untuk mulai lagi.');
-    }
-
-    private function sendWelcomeMessage(Customer $customer): void
-    {
-        $this->whatsapp->sendInteractiveButtons(
-            $customer->wa_id,
-            "Halo! 👋 Selamat datang di *SISIR Barber* 🪒\n\nAda yang bisa saya bantu?",
-            [
-                ['id' => 'action_booking', 'title' => '📅 Booking Sekarang'],
-                ['id' => 'action_status',  'title' => '📋 Cek Status Booking'],
-                ['id' => 'action_admin',   'title' => '💬 Bicara Admin'],
-            ]
-        );
+        return [
+            'name'    => null,
+            'service' => null,
+            'day'     => null,
+            'time'    => null,
+            'phone'   => $customer->wa_id,
+        ];
     }
 }

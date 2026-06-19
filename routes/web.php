@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PromoController;
+use App\Http\Controllers\RevenueController;
 use Illuminate\Support\Facades\Route;
 
 // ─── Legacy welcome ──────────────────────────────────────────────────────────
@@ -34,4 +35,7 @@ Route::middleware('sisir.auth')->group(function () {
     Route::get('/promo',               [PromoController::class, 'index'])->name('sisir.promo');
     Route::post('/promo/send',         [PromoController::class, 'send'])->name('sisir.promo.send');
     Route::post('/promo/waitlist',     [PromoController::class, 'joinWaitlist'])->name('sisir.promo.waitlist');
+
+    // Revenue / Laporan Penghasilan
+    Route::get('/revenue',             [RevenueController::class, 'index'])->name('sisir.revenue');
 });

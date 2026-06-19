@@ -11,18 +11,12 @@ use Illuminate\Support\Facades\RateLimiter;
 class WhatsAppService
 {
     private Client $http;
-    private string $token;
-    private string $phoneNumberId;
-    private string $apiVersion;
-    private string $baseUrl;
+    private string $nodeUrl;
 
     public function __construct()
     {
-        $this->token         = config('sisir.whatsapp.token');
-        $this->phoneNumberId = config('sisir.whatsapp.phone_number_id');
-        $this->apiVersion    = config('sisir.whatsapp.api_version', 'v19.0');
-        $this->baseUrl       = config('sisir.whatsapp.base_url', 'https://graph.facebook.com');
-        $this->http          = new Client(['timeout' => 10.0]);
+        $this->nodeUrl = config('sisir.whatsapp.node_url', 'http://localhost:3000');
+        $this->http    = new Client(['timeout' => 15.0]);
     }
 
     /**
@@ -30,10 +24,41 @@ class WhatsAppService
      */
     public function sendText(string $waId, string $message): bool
     {
-        return $this->send($waId, [
-            'type' => 'text',
-            'text' => ['body' => $message, 'preview_url' => false],
-        ]);
+        return $this->send($waId, $message);
+    }
+
+    /**
+     * Send a media message (like an image).
+     */
+    public function sendMedia(string $waId, string $mediaUrl, string $caption = ''): bool
+    {
+        $url = "{$this->nodeUrl}/send-media";
+
+        try {
+            $res = $this->http->post($url, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'to'       => $waId,
+                    'mediaUrl' => $mediaUrl,
+                    'message'  => $caption,
+                ],
+            ]);
+
+            $status = $res->getStatusCode();
+            $ok     = $status >= 200 && $status < 300;
+
+            if (! $ok) {
+                Log::error('[WhatsAppService] Send media failed', ['status' => $status, 'wa_id' => $waId]);
+            }
+
+            return $ok;
+        } catch (\Throwable $e) {
+            Log::error('[WhatsAppService] HTTP error connecting to Node.js server (Media)', ['error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     /**
@@ -43,19 +68,20 @@ class WhatsAppService
      */
     public function sendInteractiveButtons(string $waId, string $body, array $buttons): bool
     {
-        $buttonObjects = array_map(fn ($btn) => [
-            'type'  => 'reply',
-            'reply' => ['id' => $btn['id'], 'title' => $btn['title']],
-        ], array_slice($buttons, 0, 3)); // WhatsApp max 3 buttons
+        // whatsapp-web.js does not reliably support Meta's Interactive Buttons.
+        // Fallback to plain text options:
+        $text = $body . "\n\n*Pilihan:*";
+        foreach ($buttons as $index => $btn) {
+            $num = $index + 1;
+            $text .= "\nKetik *{$num}* untuk {$btn['title']}";
+        }
 
-        return $this->send($waId, [
-            'type'        => 'interactive',
-            'interactive' => [
-                'type' => 'button',
-                'body' => ['text' => $body],
-                'action' => ['buttons' => $buttonObjects],
-            ],
-        ]);
+        // We also need a way for the webhook to map "1" back to the button's ID.
+        // For now, we will prefix the text with a hidden identifier or rely on the conversational state.
+        // Or simply add a note:
+        $text .= "\n\n_Balas dengan angka pilihan Anda._";
+
+        return $this->sendText($waId, $text);
     }
 
     /**
@@ -171,36 +197,31 @@ class WhatsAppService
 
     // ── Private ──────────────────────────────────────────────────────────────
 
-    private function send(string $waId, array $messagePayload): bool
+    private function send(string $waId, string $message): bool
     {
-        if (empty($this->token) || empty($this->phoneNumberId)) {
-            Log::warning('[WhatsAppService] Missing credentials — message not sent', ['wa_id' => $waId]);
-
-            return false;
-        }
-
-        $url  = "{$this->baseUrl}/{$this->apiVersion}/{$this->phoneNumberId}/messages";
-        $body = array_merge(['messaging_product' => 'whatsapp', 'to' => $waId], $messagePayload);
+        $url = "{$this->nodeUrl}/send";
 
         try {
             $res = $this->http->post($url, [
                 'headers' => [
-                    'Authorization' => "Bearer {$this->token}",
-                    'Content-Type'  => 'application/json',
+                    'Content-Type' => 'application/json',
                 ],
-                'json' => $body,
+                'json' => [
+                    'to'      => $waId,
+                    'message' => $message,
+                ],
             ]);
 
             $status = $res->getStatusCode();
             $ok     = $status >= 200 && $status < 300;
 
             if (! $ok) {
-                Log::error('[WhatsAppService] Send failed', ['status' => $status, 'body' => $body]);
+                Log::error('[WhatsAppService] Send failed', ['status' => $status, 'wa_id' => $waId]);
             }
 
             return $ok;
         } catch (\Throwable $e) {
-            Log::error('[WhatsAppService] HTTP error', ['error' => $e->getMessage(), 'wa_id' => $waId]);
+            Log::error('[WhatsAppService] HTTP error connecting to Node.js server', ['error' => $e->getMessage()]);
 
             return false;
         }
