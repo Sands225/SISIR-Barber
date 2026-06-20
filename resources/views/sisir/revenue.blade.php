@@ -245,7 +245,7 @@
       <div class="page-header-label" id="dateRangeLabel">
         {{ $startDate->translatedFormat('d M') }} – {{ $endDate->translatedFormat('d M Y') }}
       </div>
-      <div class="page-header-title">💰 Laporan Penghasilan</div>
+      <div class="page-header-title">Laporan Penghasilan</div>
     </div>
 
     <!-- Period Filter -->
@@ -288,7 +288,7 @@
       <div class="stat-card" style="grid-column:span 2;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #bbf7d0">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
-            <div class="stat-card-label" style="color:#15803d;margin-bottom:4px">💰 Grand Total (DP + Sisa Layanan Selesai)</div>
+            <div class="stat-card-label" style="color:#15803d;margin-bottom:4px">Grand Total (DP + Sisa Layanan Selesai)</div>
             <div class="stat-card-value" style="font-size:22px;color:#15803d">Rp {{ number_format($grandTotal, 0, ',', '.') }}</div>
           </div>
           <div class="stat-card-icon" style="background:#bbf7d0;width:44px;height:44px">
@@ -299,10 +299,10 @@
         </div>
         <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap">
           <div style="font-size:12px;color:#166534">
-            📥 DP Terkumpul: <strong>Rp {{ number_format($totalRevenue, 0, ',', '.') }}</strong>
+            DP Terkumpul: <strong>Rp {{ number_format($totalRevenue, 0, ',', '.') }}</strong>
           </div>
           <div style="font-size:12px;color:#166534">
-            ✅ Nilai Layanan Selesai: <strong>Rp {{ number_format($fullServiceRevenue, 0, ',', '.') }}</strong>
+            Nilai Layanan Selesai: <strong>Rp {{ number_format($fullServiceRevenue, 0, ',', '.') }}</strong>
           </div>
         </div>
       </div>
